@@ -1,37 +1,21 @@
 'use client';
 
-import { useState } from 'react';
-import ChainConnectModal from '@/components/wallet/ChainConnectModal';
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
+import { APTCASINO_CHAIN } from '@/lib/baseSepolia';
 
-const VARIANT_CLASS = {
-  /** Gradient CTA (site default) */
-  default:
-    'inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-red-magic to-blue-magic px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-fuchsia-900/25 transition hover:brightness-110',
-  /** Solid blue — How it works / prominent CTAs */
-  cta: 'inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition-colors hover:bg-blue-500',
-  /** Outline — secondary CTA */
-  outline:
-    'inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.06] px-8 py-3.5 text-sm font-black uppercase tracking-widest text-white transition hover:border-white/25 hover:bg-white/10',
-};
+export default function ConnectWalletButton({ className = '', label = 'Connect Base Wallet' }) {
+  const { address, chainId, isConnected } = useAccount();
+  const { connect, connectors, isPending } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
 
-/**
- * Opens ChainConnectModal (Solana + Aptos picker). Use everywhere users tap "Connect wallet".
- */
-export default function ConnectWalletButton({
-  className = '',
-  variant = 'default',
-  label = 'Connect Wallet',
-  children,
-}) {
-  const [open, setOpen] = useState(false);
-  const base = VARIANT_CLASS[variant] || VARIANT_CLASS.default;
+  if (isConnected && chainId !== APTCASINO_CHAIN.id) {
+    return <button type="button" className={`wallet-button ${className}`} disabled={isSwitching} onClick={() => switchChain({ chainId: APTCASINO_CHAIN.id })}>{isSwitching ? 'Switching…' : 'Switch to Base Sepolia'}</button>;
+  }
 
-  return (
-    <>
-      <button type="button" className={`${base} ${className}`.trim()} onClick={() => setOpen(true)}>
-        {children ?? label}
-      </button>
-      <ChainConnectModal open={open} onClose={() => setOpen(false)} />
-    </>
-  );
+  if (isConnected) {
+    return <button type="button" className={`wallet-button ${className}`} title="Disconnect wallet" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button>;
+  }
+
+  return <button type="button" className={`wallet-button ${className}`} disabled={isPending || !connectors[0]} onClick={() => connectors[0] && connect({ connector: connectors[0] })}>{isPending ? 'Connecting…' : label}</button>;
 }

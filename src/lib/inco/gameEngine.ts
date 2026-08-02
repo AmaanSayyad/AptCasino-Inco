@@ -1,0 +1,85 @@
+import { Lightning } from '@inco/lightning-js/lite';
+import { pad, parseEventLogs, toHex, type Address, type Hex } from 'viem';
+import { readContract, simulateContract, waitForTransactionReceipt, writeContract } from '@wagmi/core';
+import { wagmiConfig } from '@/lib/wagmi';
+import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
+import { isContractConfigured } from '@/lib/baseSepolia';
+
+type Stage = 'betting' | 'revealing' | 'settling' | 'done';
+type PlayFunction = 'playRoulette' | 'playWheel' | 'playPlinko' | 'playMines';
+
+let lightningPromise: ReturnType<typeof Lightning.baseSepoliaTestnet> | null = null;
+function getLightning() {
+  if (!lightningPromise) lightningPromise = Lightning.baseSepoliaTestnet();
+  return lightningPromise;
+}
+
+async function reveal(seedHandle: Hex) {
+  const lightning = await getLightning();
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try {
+      const [result] = await lightning.attestedReveal([seedHandle], {
+        backoffConfig: { maxRetries: 8, baseDelayInMs: 2_000, backoffFactor: 1.2 },
+      });
+      const raw = result.plaintext.value;
+      const value = pad(toHex(typeof raw === 'boolean' ? (raw ? 1 : 0) : raw), { size: 32 });
+      return {
+        attestation: { handle: result.handle as Hex, value },
+        signatures: result.covalidatorSignatures.map((signature: Uint8Array) => toHex(signature)),
+      };
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Inco reveal timed out');
+}
+
+export async function runConfidentialGame({
+  account,
+  functionName,
+  args,
+  wager,
+  outcomeEvent,
+  onStage,
+}: {
+  account: Address;
+  functionName: PlayFunction;
+  args: readonly unknown[];
+  wager: bigint;
+  outcomeEvent: 'RouletteOutcome' | 'WheelOutcome' | 'PlinkoOutcome' | 'MinesOutcome';
+  onStage?: (stage: Stage) => void;
+}) {
+  if (!isContractConfigured(aptCasinoAddress)) {
+    throw new Error('AptCasino contract is not deployed yet. Set NEXT_PUBLIC_APTCASINO_ADDRESS.');
+  }
+  const fee = await readContract(wagmiConfig, { address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
+  const request = { address: aptCasinoAddress, abi: aptCasinoAbi, functionName, args, value: wager + fee, account } as const;
+
+  onStage?.('betting');
+  // The runtime function/args pair is selected by the four game adapters above;
+  // viem cannot preserve that discriminated tuple after it crosses this shared helper.
+  await simulateContract(wagmiConfig, request as any);
+  const playHash = await writeContract(wagmiConfig, request as any);
+  const playReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: playHash });
+  const placed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetPlaced', logs: playReceipt.logs });
+  if (!placed[0]) throw new Error('BetPlaced event was not found');
+  const { gameId, seedHandle } = placed[0].args;
+
+  onStage?.('revealing');
+  const { attestation, signatures } = await reveal(seedHandle);
+
+  onStage?.('settling');
+  const settleHash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress,
+    abi: aptCasinoAbi,
+    functionName: 'settle',
+    args: [gameId, attestation, signatures],
+  });
+  const settleReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: settleHash });
+  const outcomes = parseEventLogs({ abi: aptCasinoAbi, eventName: outcomeEvent, logs: settleReceipt.logs });
+  if (!outcomes[0]) throw new Error(`${outcomeEvent} was not found`);
+  onStage?.('done');
+  return { gameId, playHash, settleHash, outcome: outcomes[0].args };
+}
