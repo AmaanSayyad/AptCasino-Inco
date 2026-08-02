@@ -7,6 +7,7 @@ import { runConfidentialGame } from '@/lib/inco/gameEngine';
 import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
+import { useTreasuryAccount } from '@/lib/treasury/useTreasuryAccount';
 
 const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome', mines: 'MinesOutcome' };
 const PLAY_FUNCTIONS = { roulette: 'playRoulette', wheel: 'playWheel', plinko: 'playPlinko', mines: 'playMines' };
@@ -37,6 +38,7 @@ export function useConfidentialGame(game) {
   const { writeContract: claim, data: claimHash, isPending: claimPending } = useWriteContract();
   const claimReceipt = useWaitForTransactionReceipt({ hash: claimHash });
   const credits = Number(creditsRead.data ?? 0n);
+  const treasury = useTreasuryAccount();
 
   async function play(betArgs) {
     if (!address) return null;
@@ -106,13 +108,47 @@ export function useConfidentialGame(game) {
     }
   }
 
+  /**
+   * House-balance mode: no wallet signature per round (see useTreasuryAccount — one
+   * signature issues a session, then the server signs play+settle with its own funds
+   * and adjusts the player's off-chain balance). `payload` is the game-specific body
+   * `/api/treasury/play` expects (e.g. { risk, segments, wagerRaw } for wheel,
+   * { bets: [...] } for roulette) minus `game`, which this adds.
+   */
+  async function playTreasury(payload) {
+    if (!address) return null;
+    setError('');
+    setResult(null);
+    setStage('betting');
+    try {
+      const active = await treasury.ensureSession();
+      const response = await fetch('/api/treasury/play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${active.token}` },
+        body: JSON.stringify({ game, ...payload }),
+      }).then((r) => r.json());
+      if (!response.ok) throw new Error(response.error || 'The round could not be completed.');
+      setStage('done');
+      const normalized = { gameId: response.outcome?.gameId, playHash: response.playHash, settleHash: response.settleHash, outcome: response.outcome };
+      setResult(normalized);
+      treasury.refreshBalance();
+      creditsRead.refetch();
+      return normalized;
+    } catch (playError) {
+      setStage('error');
+      setError(playError instanceof Error ? playError.message : 'The round could not be completed.');
+      return null;
+    }
+  }
+
   const outcome = result?.outcome;
   const payout = outcome?.payout != null ? formatUnits(outcome.payout, USDC_DECIMALS) : null;
   const busy = ['approving', 'betting', 'revealing', 'settling'].includes(stage);
 
   return {
-    address, isConnected, wager, setWager, stage, error, result, outcome, payout, play, playBets, busy,
+    address, isConnected, wager, setWager, stage, error, result, outcome, payout, play, playBets, playTreasury, busy,
     credits, vaultConfigured, claim, claimPending, claimReceiptLoading: claimReceipt.isLoading,
     rewardVaultAbi, rewardVaultAddress, settleHash: result?.settleHash,
+    treasury,
   };
 }

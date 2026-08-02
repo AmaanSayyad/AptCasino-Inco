@@ -3,6 +3,7 @@ import { createPublicClient, fallback, http, parseEventLogs } from 'viem';
 import { getSupabaseAdmin, isValidWalletAddress, normalizeWallet } from '@/lib/supabase/admin';
 import { APTCASINO_CHAIN, BASE_SEPOLIA_RPC_URLS } from '@/lib/baseSepolia';
 import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
+import { summarizeOutcome } from '@/lib/games/summarize';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,13 +15,6 @@ const publicClient = createPublicClient({
   chain: APTCASINO_CHAIN,
   transport: fallback(BASE_SEPOLIA_RPC_URLS.map((url) => http(url, { retryCount: 2, timeout: 15_000 })), { rank: false }),
 });
-
-function summarize(game, outcomeArgs) {
-  if (game === 'roulette') return `Landed on ${outcomeArgs.winningNumber}`;
-  if (game === 'wheel') return `Segment ${outcomeArgs.segment} · ${(Number(outcomeArgs.multiplierBps) / 10_000).toFixed(2)}x`;
-  if (game === 'plinko') return `Bucket ${outcomeArgs.bucket} · ${(Number(outcomeArgs.multiplierBps) / 10_000).toFixed(2)}x`;
-  return outcomeArgs.hitMine ? 'Hit a mine' : 'Cleared the board';
-}
 
 const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome', mines: 'MinesOutcome' };
 
@@ -70,7 +64,7 @@ export async function POST(request) {
     bet_raw: Number(settled.args.wager),
     payout_raw: Number(settled.args.payout),
     currency: 'USDC',
-    result: summarize(game, outcomeArgs),
+    result: summarizeOutcome(game, outcomeArgs),
     fairness_proof: { gameId: settled.args.gameId.toString(), outcome: outcomeArgs, engine: 'inco-lightning' },
     proof_reference: txHash,
   });
