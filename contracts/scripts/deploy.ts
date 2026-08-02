@@ -13,29 +13,32 @@ async function main() {
   await vault.waitForDeployment();
 
   const Casino = await ethers.getContractFactory('AptCasino');
-  const casino = await Casino.deploy();
+  const casino = await Casino.deploy(USDC);
   await casino.waitForDeployment();
 
   await (await vault.setCasino(await casino.getAddress())).wait();
   await (await casino.setRewardVault(await vault.getAddress())).wait();
 
-  const bankroll = ethers.parseEther(process.env.BANKROLL_ETH || '0.02');
-  if (bankroll > 0n) await (await casino.depositBankroll({ value: bankroll })).wait();
+  const usdc = await ethers.getContractAt(
+    ['function transfer(address to, uint256 amount) returns (bool)', 'function approve(address spender, uint256 amount) returns (bool)'],
+    USDC,
+  );
+
+  const bankrollUsdc = ethers.parseUnits(process.env.BANKROLL_USDC || '20', 6);
+  if (bankrollUsdc > 0n) {
+    await (await usdc.approve(await casino.getAddress(), bankrollUsdc)).wait();
+    await (await casino.depositBankroll(bankrollUsdc)).wait();
+  }
 
   const rewardVaultUsdc = ethers.parseUnits(process.env.REWARD_VAULT_USDC || '0', 6);
-  if (rewardVaultUsdc > 0n) {
-    const usdc = await ethers.getContractAt(
-      ['function transfer(address to, uint256 amount) returns (bool)'],
-      USDC,
-    );
-    await (await usdc.transfer(await vault.getAddress(), rewardVaultUsdc)).wait();
-  }
+  if (rewardVaultUsdc > 0n) await (await usdc.transfer(await vault.getAddress(), rewardVaultUsdc)).wait();
 
   console.log(JSON.stringify({
     chainId: 84532,
     deployer: deployer.address,
     casino: await casino.getAddress(),
     rewardVault: await vault.getAddress(),
+    bankrollUsdc: ethers.formatUnits(bankrollUsdc, 6),
     rewardVaultUsdc: ethers.formatUnits(rewardVaultUsdc, 6),
     megapot: { usdc: USDC, jackpot: JACKPOT, randomTicketBuyer: RANDOM_BUYER },
   }, null, 2));

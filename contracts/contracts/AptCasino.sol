@@ -3,6 +3,8 @@ pragma solidity ^0.8.30;
 
 import {euint256, e, inco} from '@inco/lightning/src/Lib.sol';
 import {DecryptionAttestation} from '@inco/lightning/src/lightning-parts/DecryptionAttester.types.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 
 interface IMegapotRewardVault {
@@ -10,16 +12,21 @@ interface IMegapotRewardVault {
 }
 
 /// @title AptCasino
-/// @notice Four confidential Base Sepolia games powered by Inco Lightning.
+/// @notice Four confidential Base games powered by Inco Lightning. Wagers and payouts
+///         are USDC; the small fixed ETH fee attached to each call only covers Inco's
+///         covalidator cost and is unrelated to the wager currency.
 /// @dev Every round is play -> attested reveal -> settle. The secret seed cannot
 ///      be read or front-run while the wager is pending.
 contract AptCasino is Ownable {
     using e for *;
+    using SafeERC20 for IERC20;
 
     enum Kind { Roulette, Wheel, Plinko, Mines }
 
-    uint256 public constant MAX_WAGER = 0.001 ether;
+    /// @dev USDC has 6 decimals: 10_000_000 = 10 USDC.
+    uint256 public constant MAX_WAGER = 10_000_000;
     uint256 public constant GAME_TIMEOUT = 20 minutes;
+    IERC20 public immutable usdc;
     uint256 public totalActiveLiability;
     uint256 public nextGameId = 1;
     IMegapotRewardVault public rewardVault;
@@ -67,10 +74,10 @@ contract AptCasino is Ownable {
         entered = 1;
     }
 
-    constructor() Ownable(msg.sender) {}
+    constructor(address usdc_) Ownable(msg.sender) {
+        usdc = IERC20(usdc_);
+    }
 
-    receive() external payable { emit BankrollFunded(msg.sender, msg.value); }
-    function depositBankroll() external payable { emit BankrollFunded(msg.sender, msg.value); }
     function getFee() external view returns (uint256) { return inco.getFee(); }
 
     function setRewardVault(address vault) external onlyOwner {
@@ -81,14 +88,19 @@ contract AptCasino is Ownable {
     function getGame(uint256 gameId) external view returns (PendingGame memory) { return games[gameId]; }
 
     function availableBankroll() public view returns (uint256) {
-        return address(this).balance > totalActiveLiability
-            ? address(this).balance - totalActiveLiability
-            : 0;
+        uint256 balance = usdc.balanceOf(address(this));
+        return balance > totalActiveLiability ? balance - totalActiveLiability : 0;
+    }
+
+    /// @notice Anyone can top up the USDC bankroll that backs player payouts.
+    function depositBankroll(uint256 amount) external {
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        emit BankrollFunded(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) external onlyOwner nonReentrant {
         if (amount > availableBankroll()) revert ExceedsAvailable();
-        _send(owner(), amount);
+        usdc.safeTransfer(owner(), amount);
     }
 
     function _validateWager(uint256 wager) private pure {
@@ -99,13 +111,14 @@ contract AptCasino is Ownable {
         private returns (uint256 gameId)
     {
         _validateWager(wager);
-        if (msg.value < wager + inco.getFee()) revert InsufficientValue();
+        if (msg.value < inco.getFee()) revert InsufficientValue();
+        usdc.safeTransferFrom(msg.sender, address(this), wager);
 
         euint256 seed = e.rand();
         e.allowThis(seed);
         e.reveal(seed);
 
-        if (address(this).balance < totalActiveLiability + maxPayout) revert InsufficientBankroll();
+        if (usdc.balanceOf(address(this)) < totalActiveLiability + maxPayout) revert InsufficientBankroll();
         totalActiveLiability += maxPayout;
         gameId = nextGameId++;
         games[gameId] = PendingGame({
@@ -179,7 +192,7 @@ contract AptCasino is Ownable {
         else payout = _settleMines(gameId, game, seed);
 
         if (payout > game.maxPayout) payout = game.maxPayout;
-        if (payout > 0) _send(game.player, payout);
+        if (payout > 0) usdc.safeTransfer(game.player, payout);
         emit BetSettled(gameId, game.player, game.wager, payout, uint8(game.kind));
         _award(gameId, game, payout);
     }
@@ -191,7 +204,7 @@ contract AptCasino is Ownable {
         if (block.timestamp < game.createdAt + GAME_TIMEOUT) revert NotExpired();
         game.settled = true;
         totalActiveLiability -= game.maxPayout;
-        _send(game.player, game.wager);
+        usdc.safeTransfer(game.player, game.wager);
         emit BetExpired(gameId, game.player, game.wager);
     }
 
@@ -277,17 +290,14 @@ contract AptCasino is Ownable {
 
     function _award(uint256 gameId, PendingGame storage game, uint256 payout) private {
         if (address(rewardVault) == address(0)) return;
-        uint256 amount = game.wager / 1e12;
+        // ponytail: wager is 6-decimal USDC; /1e4 maps ~0.01 USDC to 1 credit.
+        // Tuning knob — adjust the divisor/clamp if credit accrual feels off.
+        uint256 amount = game.wager / 1e4;
         if (amount < 10) amount = 10;
         if (amount > 250) amount = 250;
         if (payout > game.wager) amount += 50;
         try rewardVault.award(game.player, gameId, uint8(game.kind), amount) {} catch {
             emit RewardAwardFailed(gameId, game.player, amount);
         }
-    }
-
-    function _send(address to, uint256 amount) private {
-        (bool ok,) = to.call{value: amount}('');
-        require(ok, 'send failed');
     }
 }

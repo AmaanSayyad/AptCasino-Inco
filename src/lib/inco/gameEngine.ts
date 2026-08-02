@@ -3,9 +3,10 @@ import { pad, parseEventLogs, toHex, type Address, type Hex } from 'viem';
 import { readContract, simulateContract, waitForTransactionReceipt, writeContract } from '@wagmi/core';
 import { wagmiConfig } from '@/lib/wagmi';
 import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
+import { usdcAbi, usdcAddress } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
 
-type Stage = 'betting' | 'revealing' | 'settling' | 'done';
+type Stage = 'approving' | 'betting' | 'revealing' | 'settling' | 'done';
 type PlayFunction = 'playRoulette' | 'playWheel' | 'playPlinko' | 'playMines';
 
 let lightningPromise: ReturnType<typeof Lightning.baseSepoliaTestnet> | null = null;
@@ -55,7 +56,18 @@ export async function runConfidentialGame({
     throw new Error('AptCasino contract is not deployed yet. Set NEXT_PUBLIC_APTCASINO_ADDRESS.');
   }
   const fee = await readContract(wagmiConfig, { address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
-  const request = { address: aptCasinoAddress, abi: aptCasinoAbi, functionName, args, value: wager + fee, account } as const;
+  const request = { address: aptCasinoAddress, abi: aptCasinoAbi, functionName, args, value: fee, account } as const;
+
+  const allowance = await readContract(wagmiConfig, {
+    address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [account, aptCasinoAddress],
+  });
+  if (allowance < wager) {
+    onStage?.('approving');
+    const approveHash = await writeContract(wagmiConfig, {
+      address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager], account,
+    });
+    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
+  }
 
   onStage?.('betting');
   // The runtime function/args pair is selected by the four game adapters above;
