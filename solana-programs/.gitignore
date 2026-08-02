@@ -1,5 +1,0 @@
-target/
-.anchor/
-test-ledger/
-**/*.rs.bk
-.DS_Store
