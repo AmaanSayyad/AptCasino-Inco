@@ -3,6 +3,7 @@ import "@/styles/globals.css";
 import Providers from "./providers";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ReferralCapture from "@/components/ReferralCapture";
 const inter = Inter({ subsets: ["latin"] });
 
 import { Analytics } from "@vercel/analytics/next";
@@ -36,6 +37,7 @@ export default function RootLayout({ children }) {
         suppressHydrationWarning={true}
       >
         <Providers>
+          <ReferralCapture />
           <Navbar />
           <main id="site-main" className="site-main min-w-0 w-full">
             {children}

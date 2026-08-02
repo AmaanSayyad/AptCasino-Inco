@@ -8,8 +8,11 @@ import ConnectWalletButton from '@/components/ConnectWalletButton';
 const links = [
   ['/game', 'Games'],
   ['/jackpot', 'Megapot'],
+  ['/leaderboard', 'Leaderboard'],
+  ['/live', 'Live'],
+  ['/referral', 'Referral'],
+  ['/profile', 'Profile'],
   ['/fairness', 'Fairness'],
-  ['/docs', 'Docs'],
 ];
 
 export default function Navbar() {
