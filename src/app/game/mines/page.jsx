@@ -1,2 +1,2 @@
-import ConfidentialGame from '@/components/Games/ConfidentialGame';
-export default function MinesPage() { return <ConfidentialGame game="mines" />; }
+import MinesGame from '@/components/Games/MinesGame';
+export default function MinesPage() { return <MinesGame />; }

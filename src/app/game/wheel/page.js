@@ -1,2 +1,2 @@
-import ConfidentialGame from '@/components/Games/ConfidentialGame';
-export default function WheelPage() { return <ConfidentialGame game="wheel" />; }
+import WheelGame from '@/components/Games/WheelGame';
+export default function WheelPage() { return <WheelGame />; }

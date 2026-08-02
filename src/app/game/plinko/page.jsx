@@ -1,2 +1,2 @@
-import ConfidentialGame from '@/components/Games/ConfidentialGame';
-export default function PlinkoPage() { return <ConfidentialGame game="plinko" />; }
+import PlinkoGame from '@/components/Games/PlinkoGame';
+export default function PlinkoPage() { return <PlinkoGame />; }
