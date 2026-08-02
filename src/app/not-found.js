@@ -22,10 +22,10 @@ export default function NotFound() {
           Games
         </Link>
         <Link
-          href="/docs"
+          href="/fairness"
           className="px-5 py-2.5 rounded-lg border border-white/20 hover:bg-white/5 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50"
         >
-          Docs
+          Fairness
         </Link>
       </div>
     </div>
