@@ -1,11 +1,31 @@
-import Link from 'next/link';
+'use client';
 
-const features = [
-  ['Private until settlement', 'Inco Lightning seals every random seed and verifies the reveal with covalidator attestations.'],
-  ['Jackpot in the loop', 'Settled games earn Megapot credits. Credits become ticket NFTs in the player wallet.'],
-  ['One network', 'AptCasino runs on Base Sepolia. No chain picker, bridged balance or server-ledger casino account.'],
-];
+import HeroSection from "@/components/HeroSection";
+import FeatureSection from '@/components/FeatureSection';
+import GameCarousel from '@/components/GameCarousel';
+import LetsPlaySection from '@/components/LetsPlaySection';
+import PlatformIntelligenceSection from '@/components/PlatformIntelligenceSection';
+import EcosystemLogosSection from '@/components/EcosystemLogosSection';
+import AdvisoryPartnershipsSection from '@/components/AdvisoryPartnershipsSection';
+import TestimonialsSection from '@/components/TestimonialsSection';
+import UpcomingTournaments from '@/components/UpcomingTournaments';
+import NewsUpdates from '@/components/NewsUpdates';
+import ProvablyFairSection from '@/components/ProvablyFairSection';
 
 export default function Home() {
-  return <main className="overflow-hidden bg-[#07070e] text-white"><section className="relative px-5 py-24 sm:py-32"><div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(236,72,153,.17),transparent_32%),radial-gradient(circle_at_75%_15%,rgba(59,130,246,.14),transparent_30%)]" /><div className="relative mx-auto max-w-7xl"><div className="max-w-5xl"><span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-200">Live architecture · Base Sepolia</span><h1 className="mt-8 font-display text-6xl font-black leading-[.94] tracking-tight sm:text-8xl">The outcome stays hidden.<br /><span className="bg-gradient-to-r from-fuchsia-400 via-red-400 to-amber-300 bg-clip-text text-transparent">The jackpot stays close.</span></h1><p className="mt-7 max-w-2xl text-lg leading-8 text-white/60">AptCasino combines four confidential Inco games with Megapot ticket progression. Play, settle with an attestation, earn credits, claim a real testnet ticket NFT.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/game" className="rounded-xl bg-white px-7 py-3.5 font-black text-black">Explore games</Link><Link href="/docs" className="rounded-xl border border-white/15 bg-white/5 px-7 py-3.5 font-black">Read the docs</Link></div></div><div className="mt-20 grid gap-4 md:grid-cols-3">{features.map(([title,text]) => <div key={title} className="rounded-3xl border border-white/10 bg-white/[.035] p-7 backdrop-blur"><h2 className="text-xl font-black">{title}</h2><p className="mt-3 leading-7 text-white/50">{text}</p></div>)}</div></div></section><section className="border-y border-white/10 bg-[#0d0d18] px-5 py-16"><div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[.8fr_1.2fr]"><div><p className="text-xs font-black uppercase tracking-[.28em] text-fuchsia-300">The core loop</p><h2 className="mt-4 text-4xl font-black">Privacy creates the result. Play creates the ticket.</h2></div><ol className="grid gap-3 sm:grid-cols-2">{['Lock a test ETH wager','Draw an encrypted Inco seed','Verify and settle on Base','Accumulate Megapot credits'].map((step,index) => <li key={step} className="rounded-2xl border border-white/10 p-5"><span className="text-xs font-black text-white/30">0{index+1}</span><p className="mt-2 font-bold">{step}</p></li>)}</ol></div></section></main>;
+  return (
+    <div className="bg-[#070005] overflow-x-hidden w-full">
+      <HeroSection />
+      <FeatureSection />
+      <GameCarousel />
+      <PlatformIntelligenceSection />
+      <ProvablyFairSection />
+      <EcosystemLogosSection />
+      <AdvisoryPartnershipsSection />
+      <UpcomingTournaments />
+      <TestimonialsSection />
+      <NewsUpdates />
+      <LetsPlaySection />
+    </div>
+  );
 }

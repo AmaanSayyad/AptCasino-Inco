@@ -1,20 +1,7 @@
+import Image from 'next/image';
 import Link from 'next/link';
+import { FaLock, FaShieldAlt } from 'react-icons/fa';
 
 export default function Footer() {
-  return (
-    <footer className="border-t border-white/10 bg-[#07070e]">
-      <div className="mx-auto grid max-w-7xl gap-8 px-6 py-10 md:grid-cols-[1fr_auto]">
-        <div>
-          <p className="font-display text-xl font-black text-white">AptCasino</p>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Confidential casino games powered by Inco Lightning, with Megapot tickets earned inside the game loop. Base Sepolia testnet only.</p>
-        </div>
-        <div className="flex flex-wrap gap-5 text-sm text-white/60">
-          <Link href="/game" className="hover:text-white">Games</Link>
-          <Link href="/jackpot" className="hover:text-white">Megapot</Link>
-          <Link href="/docs" className="hover:text-white">Docs</Link>
-          <a href="https://sepolia.basescan.org" target="_blank" rel="noreferrer" className="hover:text-white">BaseScan</a>
-        </div>
-      </div>
-    </footer>
-  );
+  return <footer className="relative overflow-hidden border-t border-white/10 bg-[#07030a] pb-4 pt-6 text-white"><div className="absolute -left-20 -top-20 h-60 w-60 rounded-full bg-red-magic/10 blur-[100px]"/><div className="absolute -bottom-20 -right-20 h-60 w-60 rounded-full bg-blue-magic/10 blur-[100px]"/><div className="mb-5 h-px w-full bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"/><div className="site-page-pad-x relative mx-auto grid max-w-[1480px] gap-8 lg:grid-cols-12"><div className="lg:col-span-5"><Link href="/"><Image src="/PowerPlay.png" alt="AptCasino" width={172} height={40}/></Link><p className="mt-3 max-w-md text-xs leading-relaxed text-white/60">Four confidential casino games powered by Inco Lightning, with Megapot ticket rewards embedded in the Base Sepolia gameplay loop.</p><div className="mt-4 flex flex-wrap gap-2"><span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75"><FaLock className="text-emerald-400"/> Inco private</span><span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75"><FaShieldAlt className="text-blue-magic"/> Base verified</span></div></div><div className="lg:col-span-3"><h3 className="font-display text-lg">Navigation</h3><ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-white/60"><li><Link href="/game">Games</Link></li><li><Link href="/jackpot">Megapot</Link></li><li><Link href="/fairness">Fairness</Link></li><li><Link href="/docs">Docs</Link></li></ul></div><div className="lg:col-span-4"><h3 className="font-display text-lg">Deployed contracts</h3><p className="mt-3 text-xs leading-6 text-white/55">AptCasino and MegapotRewardVault are live on Base Sepolia and linked from the deployment documentation.</p><Link href="/docs/deployment" className="mt-3 inline-flex rounded-md bg-gradient-to-r from-red-magic to-blue-magic px-4 py-2 text-xs font-bold">View deployment</Link></div></div><div className="site-page-pad-x relative mx-auto mt-6 max-w-[1480px] border-t border-white/10 pt-3 text-xs text-white/35">© {new Date().getFullYear()} AptCasino · Base Sepolia testnet</div></footer>;
 }

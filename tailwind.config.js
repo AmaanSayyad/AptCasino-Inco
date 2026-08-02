@@ -22,6 +22,10 @@ module.exports = {
         "purple-magic": "#1F0317",
         "dark-purple": "#090107",
       },
+      fontFamily: {
+        display: ["ClashDisplay-Variable"],
+        sans: ["PlusJakartaSans-Variable"],
+      },
       keyframes: {
         blink: {
           '0%, 90%, 100%': { transform: 'scaleY(1)' },
@@ -48,5 +52,7 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('tailwind-scrollbar')({ nocompatible: true }),
+  ],
 };
