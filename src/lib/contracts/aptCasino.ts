@@ -6,7 +6,7 @@ export const rewardVaultAddress = REWARD_VAULT_ADDRESS;
 
 export const aptCasinoAbi = parseAbi([
   'function getFee() view returns (uint256)',
-  'function playRoulette(uint8 betType, uint8 selection, uint256 wager) payable returns (uint256 gameId)',
+  'function playRoulette((uint8 betType, uint8 selection, uint256 wager)[] bets) payable returns (uint256 gameId)',
   'function playWheel(uint8 risk, uint8 segments, uint256 wager) payable returns (uint256 gameId)',
   'function playPlinko(uint8 risk, uint8 rows, uint256 wager) payable returns (uint256 gameId)',
   'function playMines(uint8[] selectedTiles, uint8 mineCount, uint256 wager) payable returns (uint256 gameId)',

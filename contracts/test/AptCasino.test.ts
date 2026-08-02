@@ -17,11 +17,18 @@ describe('AptCasino (USDC wager plumbing)', function () {
     return { owner, player, usdc, casino };
   }
 
-  it('rejects a zero or over-max wager before touching USDC or Inco', async function () {
+  it('rejects a zero per-bet wager or an over-max total wager before touching USDC or Inco', async function () {
     const { casino } = await deploy();
-    await expect(casino.playRoulette(0, 5, 0)).to.be.revertedWithCustomError(casino, 'InvalidWager');
+    await expect(casino.playRoulette([{ betType: 0, selection: 5, wager: 0 }])).to.be.revertedWithCustomError(casino, 'InvalidInput');
     const tooBig = (await casino.MAX_WAGER()) + 1n;
-    await expect(casino.playRoulette(0, 5, tooBig)).to.be.revertedWithCustomError(casino, 'InvalidWager');
+    await expect(casino.playRoulette([{ betType: 0, selection: 5, wager: tooBig }])).to.be.revertedWithCustomError(casino, 'InvalidWager');
+  });
+
+  it('rejects an empty or oversized roulette bet array', async function () {
+    const { casino } = await deploy();
+    await expect(casino.playRoulette([])).to.be.revertedWithCustomError(casino, 'InvalidInput');
+    const elevenBets = Array.from({ length: 11 }, () => ({ betType: 0, selection: 5, wager: 100_000 }));
+    await expect(casino.playRoulette(elevenBets)).to.be.revertedWithCustomError(casino, 'InvalidInput');
   });
 
   it('accepts USDC bankroll deposits and reports availableBankroll', async function () {

@@ -134,16 +134,33 @@ contract AptCasino is Ownable {
         emit BetPlaced(gameId, msg.sender, wager, euint256.unwrap(seed), uint8(kind));
     }
 
-    function playRoulette(uint8 betType, uint8 selection, uint256 wager)
+    struct RouletteBet { uint8 betType; uint8 selection; uint256 wager; }
+
+    /// @notice Places up to 10 simultaneous chips in one round (straight/color/parity/
+    ///         high-low/dozen/column), matching a real roulette table. Each chip's own
+    ///         wager funds its own payout; the round's total wager is the sum of chips.
+    function playRoulette(RouletteBet[] calldata bets)
         external payable nonReentrant returns (uint256 gameId)
     {
-        if (betType > 5) revert InvalidInput();
-        if (betType == 0 && selection > 36) revert InvalidInput();
-        if ((betType >= 1 && betType <= 3) && selection > 1) revert InvalidInput();
-        if ((betType == 4 || betType == 5) && selection > 2) revert InvalidInput();
-        uint256 maxPayout = betType == 0 ? (wager * 36 * 97) / 100 :
+        if (bets.length == 0 || bets.length > 10) revert InvalidInput();
+        uint256 totalWager;
+        uint256 totalMaxPayout;
+        for (uint256 i; i < bets.length; i++) {
+            RouletteBet calldata bet = bets[i];
+            if (bet.wager == 0) revert InvalidInput();
+            if (bet.betType > 5) revert InvalidInput();
+            if (bet.betType == 0 && bet.selection > 36) revert InvalidInput();
+            if ((bet.betType >= 1 && bet.betType <= 3) && bet.selection > 1) revert InvalidInput();
+            if ((bet.betType == 4 || bet.betType == 5) && bet.selection > 2) revert InvalidInput();
+            totalWager += bet.wager;
+            totalMaxPayout += _rouletteMaxPayout(bet.betType, bet.wager);
+        }
+        gameId = _open(totalWager, totalMaxPayout, Kind.Roulette, abi.encode(bets));
+    }
+
+    function _rouletteMaxPayout(uint8 betType, uint256 wager) private pure returns (uint256) {
+        return betType == 0 ? (wager * 36 * 97) / 100 :
             (betType >= 4 ? (wager * 3 * 97) / 100 : (wager * 2 * 97) / 100);
-        gameId = _open(wager, maxPayout, Kind.Roulette, abi.encode(betType, selection));
     }
 
     function playWheel(uint8 risk, uint8 segments, uint256 wager)
@@ -209,17 +226,19 @@ contract AptCasino is Ownable {
     }
 
     function _settleRoulette(uint256 gameId, PendingGame storage game, uint256 seed) private returns (uint256 payout) {
-        (uint8 betType, uint8 selection) = abi.decode(game.params, (uint8, uint8));
+        RouletteBet[] memory bets = abi.decode(game.params, (RouletteBet[]));
         uint8 winning = uint8(seed % 37);
-        bool won;
-        if (betType == 0) won = winning == selection;
-        else if (betType == 1) won = winning > 0 && _isRed(winning) == (selection == 0);
-        else if (betType == 2) won = winning > 0 && winning % 2 == selection;
-        else if (betType == 3) won = winning > 0 && (winning > 18 ? 1 : 0) == selection;
-        else if (betType == 4) won = winning > 0 && uint8((winning - 1) / 12) == selection;
-        else won = winning > 0 && uint8((winning - 1) % 3) == selection;
-        if (won) payout = betType == 0 ? (game.wager * 36 * 97) / 100 :
-            (betType >= 4 ? (game.wager * 3 * 97) / 100 : (game.wager * 2 * 97) / 100);
+        for (uint256 i; i < bets.length; i++) {
+            RouletteBet memory bet = bets[i];
+            bool won;
+            if (bet.betType == 0) won = winning == bet.selection;
+            else if (bet.betType == 1) won = winning > 0 && _isRed(winning) == (bet.selection == 0);
+            else if (bet.betType == 2) won = winning > 0 && winning % 2 == bet.selection;
+            else if (bet.betType == 3) won = winning > 0 && (winning > 18 ? 1 : 0) == bet.selection;
+            else if (bet.betType == 4) won = winning > 0 && uint8((winning - 1) / 12) == bet.selection;
+            else won = winning > 0 && uint8((winning - 1) % 3) == bet.selection;
+            if (won) payout += _rouletteMaxPayout(bet.betType, bet.wager);
+        }
         emit RouletteOutcome(gameId, winning, payout);
     }
 

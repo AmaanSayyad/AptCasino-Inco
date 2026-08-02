@@ -17,14 +17,14 @@ import { baseSepolia } from 'viem/chains';
 const require = createRequire(import.meta.url);
 const { Lightning } = require('@inco/lightning-js/lite');
 
-const CASINO = '0x9A9974B0C0A2A3855528e9b0eE68931c705A0E0F';
-const VAULT = '0x9BCf1914F96f4b438Fb22aAE7ba46343FBC8ADB8';
+const CASINO = '0xbd025968C8C1eDDEE5EdAE28479C295876EcEdC5';
+const VAULT = '0x20862fEfB10C4e036Cc6CCa82Cf90B3296378E26';
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const RPC = 'https://base-sepolia.drpc.org';
 
 const casinoAbi = parseAbi([
   'function getFee() view returns (uint256)',
-  'function playRoulette(uint8 betType, uint8 selection, uint256 wager) payable returns (uint256 gameId)',
+  'function playRoulette((uint8 betType, uint8 selection, uint256 wager)[] bets) payable returns (uint256 gameId)',
   'function playWheel(uint8 risk, uint8 segments, uint256 wager) payable returns (uint256 gameId)',
   'function playPlinko(uint8 risk, uint8 rows, uint256 wager) payable returns (uint256 gameId)',
   'function playMines(uint8[] selectedTiles, uint8 mineCount, uint256 wager) payable returns (uint256 gameId)',
@@ -160,7 +160,7 @@ async function playRound(definition, wager, fee) {
 const wager = parseUnits('0.5', 6);
 const fee = await publicClient.readContract({ address: CASINO, abi: casinoAbi, functionName: 'getFee' });
 const definitions = [
-  { kind: 0, name: 'roulette', functionName: 'playRoulette', args: (value) => [1, 0, value], outcomeEvent: 'RouletteOutcome' },
+  { kind: 0, name: 'roulette', functionName: 'playRoulette', args: (value) => [[{ betType: 1, selection: 0, wager: value }]], outcomeEvent: 'RouletteOutcome' },
   { kind: 1, name: 'wheel', functionName: 'playWheel', args: (value) => [1, 20, value], outcomeEvent: 'WheelOutcome' },
   { kind: 2, name: 'plinko', functionName: 'playPlinko', args: (value) => [1, 12, value], outcomeEvent: 'PlinkoOutcome' },
   { kind: 3, name: 'mines', functionName: 'playMines', args: (value) => [[0, 6, 12], 5, value], outcomeEvent: 'MinesOutcome' },

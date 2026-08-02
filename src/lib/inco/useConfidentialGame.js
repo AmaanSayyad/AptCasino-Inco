@@ -69,12 +69,49 @@ export function useConfidentialGame(game) {
     }
   }
 
+  /**
+   * Roulette-only: places several simultaneous chips in one round (each with its own
+   * stake), matching a real table. `bets` is [{ betType, selection, amount }], `amount`
+   * a USDC string per chip. Total wager (for approve/allowance) is the sum of chips.
+   */
+  async function playBets(bets) {
+    if (!address || game !== 'roulette') return null;
+    setError('');
+    setResult(null);
+    try {
+      const rawBets = bets.map((bet) => ({
+        betType: bet.betType, selection: bet.selection, wager: parseUnits(bet.amount, USDC_DECIMALS),
+      }));
+      const totalWagerRaw = rawBets.reduce((sum, bet) => sum + bet.wager, 0n);
+      const response = await runConfidentialGame({
+        account: address,
+        functionName: 'playRoulette',
+        args: [rawBets],
+        wager: totalWagerRaw,
+        outcomeEvent: 'RouletteOutcome',
+        onStage: setStage,
+      });
+      setResult(response);
+      creditsRead.refetch();
+      fetch('/api/games/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, game, txHash: response.settleHash }),
+      }).catch((logError) => console.error('game history log failed', logError));
+      return response;
+    } catch (playError) {
+      setStage('error');
+      setError(playError instanceof Error ? playError.message : 'The round could not be completed.');
+      return null;
+    }
+  }
+
   const outcome = result?.outcome;
   const payout = outcome?.payout != null ? formatUnits(outcome.payout, USDC_DECIMALS) : null;
   const busy = ['approving', 'betting', 'revealing', 'settling'].includes(stage);
 
   return {
-    address, isConnected, wager, setWager, stage, error, result, outcome, payout, play, busy,
+    address, isConnected, wager, setWager, stage, error, result, outcome, payout, play, playBets, busy,
     credits, vaultConfigured, claim, claimPending, claimReceiptLoading: claimReceipt.isLoading,
     rewardVaultAbi, rewardVaultAddress, settleHash: result?.settleHash,
   };

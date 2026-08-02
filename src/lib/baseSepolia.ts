@@ -17,10 +17,10 @@ export const MEGAPOT_TESTNET = {
 } as const;
 
 export const CASINO_ADDRESS = (process.env.NEXT_PUBLIC_APTCASINO_ADDRESS ||
-  '0x9A9974B0C0A2A3855528e9b0eE68931c705A0E0F') as `0x${string}`;
+  '0xbd025968C8C1eDDEE5EdAE28479C295876EcEdC5') as `0x${string}`;
 
 export const REWARD_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_MEGAPOT_REWARD_VAULT_ADDRESS ||
-  '0x9BCf1914F96f4b438Fb22aAE7ba46343FBC8ADB8') as `0x${string}`;
+  '0x20862fEfB10C4e036Cc6CCa82Cf90B3296378E26') as `0x${string}`;
 
 export function basescanUrl(kind: 'address' | 'tx', value: string) {
   return `https://sepolia.basescan.org/${kind}/${value}`;
