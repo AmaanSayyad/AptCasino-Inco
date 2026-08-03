@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Box, Grid, Typography } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { useReadContract } from 'wagmi';
+import { motion } from 'framer-motion';
+import { FaChartLine, FaCoins, FaTrophy, FaBalanceScale, FaPercentage } from 'react-icons/fa';
+import { GiRollingDices, GiPokerHand, GiCardRandom } from 'react-icons/gi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import BalanceChip from '@/components/treasury/BalanceChip';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
@@ -13,6 +16,10 @@ import { muiStyles } from './styles';
 import RouletteHistory from './components/RouletteHistory';
 import RouletteLeaderboard from './components/RouletteLeaderboard';
 import StrategyGuide from './components/StrategyGuide';
+import RouletteGameIntro from './components/RouletteGameIntro';
+import RoulettePayout from './components/RoulettePayout';
+import WinProbabilities from './components/WinProbabilities';
+import { RouletteInfoTriggers, RouletteInfoDialog } from './components/RouletteInfoPanel';
 
 const theme = createTheme(muiStyles.dark);
 const CHIP_VALUES = [0.5, 1, 5, 10];
@@ -29,6 +36,117 @@ const COVERED_SHAPES = {
   corner: { label: 'Corner', count: 4, payout: '9x' },
   sixline: { label: 'Six-line', count: 6, payout: '6x' },
 };
+
+function scrollToId(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Real stats from /api/games/stats + /api/leaderboard — no fabricated numbers. */
+function useRouletteStats() {
+  const [stats, setStats] = useState({ bets: '…', volume: '…', maxWin: '…' });
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/games/stats').then((r) => r.json()).catch(() => null),
+      fetch('/api/leaderboard?game=roulette').then((r) => r.json()).catch(() => null),
+    ]).then(([statsRes, boardRes]) => {
+      if (cancelled) return;
+      const row = statsRes?.stats?.find((s) => s.game === 'roulette');
+      const maxWin = Math.max(0, ...(boardRes?.leaderboard ?? []).map((r) => Number(r.biggestWin) || 0));
+      setStats({
+        bets: row ? row.bets.toLocaleString() : '0',
+        volume: row ? `${(row.wagered / 10 ** USDC_DECIMALS).toFixed(2)} USDC` : '0 USDC',
+        maxWin: `${(maxWin / 10 ** USDC_DECIMALS).toFixed(2)} USDC`,
+      });
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return stats;
+}
+
+function RouletteHeader() {
+  const stats = useRouletteStats();
+  return (
+    <div className="site-page-top site-page-pad-x relative mb-6 text-white md:mb-8">
+      <div className="absolute top-5 -right-32 w-64 h-64 bg-red-500/10 rounded-full blur-3xl" />
+      <div className="absolute top-28 left-1/3 w-32 h-32 bg-green-500/10 rounded-full blur-2xl" />
+      <div className="absolute -bottom-20 left-1/4 w-48 h-48 bg-purple-500/5 rounded-full blur-3xl" />
+
+      <div className="relative">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-6">
+          <div className="md:w-1/2">
+            <div className="flex items-center">
+              <div className="mr-3 p-3 bg-gradient-to-br from-red-900/40 to-red-700/10 rounded-lg shadow-lg shadow-red-900/10 border border-red-800/20">
+                <GiRollingDices className="text-3xl text-red-300" />
+              </div>
+              <div>
+                <motion.div className="flex items-center gap-2" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                  <p className="text-sm text-gray-400 font-sans">Games / Roulette</p>
+                  <span className="text-xs px-2 py-0.5 bg-red-900/30 rounded-full text-red-300 font-display">Classic</span>
+                  <span className="text-xs px-2 py-0.5 bg-green-900/30 rounded-full text-green-300 font-display">Live</span>
+                </motion.div>
+                <motion.h1 className="text-3xl md:text-4xl font-bold font-display bg-gradient-to-r from-red-300 to-amber-300 bg-clip-text text-transparent" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+                  European Roulette
+                </motion.h1>
+              </div>
+            </div>
+            <motion.p className="text-white/70 mt-2 max-w-xl font-sans" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
+              Place your bets and experience the thrill of the spinning wheel. From simple red/black bets to split, street, corner and six-line combinations, the choice is yours.
+            </motion.p>
+            <motion.div className="flex flex-wrap gap-4 mt-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}>
+              <div className="flex items-center text-sm bg-gradient-to-r from-red-900/30 to-red-800/10 px-3 py-1.5 rounded-full">
+                <FaPercentage className="mr-1.5 text-amber-400" />
+                <span className="font-sans">2.70% house edge</span>
+              </div>
+              <div className="flex items-center text-sm bg-gradient-to-r from-red-900/30 to-red-800/10 px-3 py-1.5 rounded-full">
+                <GiPokerHand className="mr-1.5 text-blue-400" />
+                <span className="font-sans">Multiple betting options</span>
+              </div>
+              <div className="flex items-center text-sm bg-gradient-to-r from-red-900/30 to-red-800/10 px-3 py-1.5 rounded-full">
+                <FaBalanceScale className="mr-1.5 text-green-400" />
+                <span className="font-sans">Inco-verified fairness</span>
+              </div>
+            </motion.div>
+          </div>
+
+          <div className="md:w-1/2">
+            <div className="bg-gradient-to-br from-red-900/20 to-red-800/5 rounded-xl p-4 border border-red-800/20 shadow-lg shadow-red-900/10">
+              <motion.div className="grid grid-cols-3 gap-2 mb-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.4 }}>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600/20 mb-1"><FaChartLine className="text-blue-400" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Total Bets</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats.bets}</div>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-600/20 mb-1"><FaCoins className="text-yellow-400" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Volume</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats.volume}</div>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-600/20 mb-1"><FaTrophy className="text-yellow-500" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Max Win</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats.maxWin}</div>
+                </div>
+              </motion.div>
+              <motion.div className="flex flex-wrap justify-between gap-2" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}>
+                <button onClick={() => scrollToId('strategy')} className="flex items-center justify-center px-4 py-2 bg-gradient-to-r from-red-800/40 to-red-900/20 rounded-lg text-white font-medium text-sm hover:from-red-700/40 hover:to-red-800/20 transition-all duration-300">
+                  <GiCardRandom className="mr-2" /> Strategy Guide
+                </button>
+                <button onClick={() => scrollToId('payouts')} className="flex items-center justify-center px-4 py-2 bg-gradient-to-r from-blue-800/40 to-blue-900/20 rounded-lg text-white font-medium text-sm hover:from-blue-700/40 hover:to-blue-800/20 transition-all duration-300">
+                  <FaCoins className="mr-2" /> Payout Tables
+                </button>
+                <button onClick={() => scrollToId('history')} className="flex items-center justify-center px-4 py-2 bg-gradient-to-r from-purple-800/40 to-purple-900/20 rounded-lg text-white font-medium text-sm hover:from-purple-700/40 hover:to-purple-800/20 transition-all duration-300">
+                  <FaChartLine className="mr-2" /> Game History
+                </button>
+              </motion.div>
+            </div>
+          </div>
+        </div>
+        <div className="w-full h-0.5 bg-gradient-to-r from-red-600 via-blue-500/30 to-transparent mt-6" />
+      </div>
+    </div>
+  );
+}
 
 function NumberCell({ n, chipAmount, isWinner, isPending, onClick }) {
   const bg = n === 0 ? 'game.green' : isRedNumber(n) ? 'game.red' : 'dark.bg';
@@ -89,6 +207,7 @@ export default function RoulettePage() {
   // many numbers to define it — real betType 6 on-chain, 36/count odds, not a UI toy.
   const [betShape, setBetShape] = useState('straight');
   const [pendingNumbers, setPendingNumbers] = useState([]);
+  const [helpPanel, setHelpPanel] = useState(null);
 
   const spinSoundRef = useRef(null);
   const winSoundRef = useRef(null);
@@ -161,17 +280,14 @@ export default function RoulettePage() {
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ minHeight: '100vh', bgcolor: '#080005', pt: { xs: 10, md: 12 }, pb: 10 }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#080005', pb: 10 }}>
         <audio ref={spinSoundRef} src="/sounds/ball-spin.mp3" preload="auto" />
         <audio ref={winSoundRef} src="/sounds/win-chips.mp3" preload="auto" />
         <audio ref={chipSelectRef} src="/sounds/chip-select.mp3" preload="auto" />
 
-        <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
-          <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 0.5 }}>Confidential Roulette</Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2 }}>
-            Inco Lightning seals the winning number until your wagers are locked on Base Sepolia. Place multiple chips, then spin.
-          </Typography>
+        <RouletteHeader />
 
+        <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
             <BalanceChip treasury={hook.treasury} />
             <button type="button" onClick={() => hook.setMode(hook.mode === 'treasury' ? 'wallet' : 'treasury')} style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', textDecoration: 'underline dotted' }}>
@@ -190,7 +306,10 @@ export default function RoulettePage() {
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+              <RouletteInfoTriggers activePanel={helpPanel} onOpen={setHelpPanel} />
+              <RouletteInfoDialog panel={helpPanel} onClose={() => setHelpPanel(null)} onSwitchPanel={setHelpPanel} />
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, mt: 1.5, flexWrap: 'wrap' }}>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip:</Typography>
                 {CHIP_VALUES.map((v) => (
                   <Box key={v} onClick={() => setChipValue(v)} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: chipValue === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: chipValue === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
@@ -258,8 +377,6 @@ export default function RoulettePage() {
                   </Box>
                 )}
               </Box>
-
-              <StrategyGuide />
             </Grid>
 
             <Grid item xs={12} md={4}>
@@ -296,10 +413,25 @@ export default function RoulettePage() {
                   {hook.claimPending || hook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
                 </button>
               </Box>
-
-              <RouletteHistory address={hook.address} stage={hook.stage} />
-              <RouletteLeaderboard stage={hook.stage} />
             </Grid>
+          </Grid>
+
+          <Box sx={{ mt: { xs: 5, md: 6 } }}>
+            <RouletteGameIntro />
+          </Box>
+
+          <Grid id="strategy" container spacing={3} sx={{ mt: { xs: 5, md: 6 } }}>
+            <Grid item xs={12} md={7}><StrategyGuide /></Grid>
+            <Grid item xs={12} md={5}><WinProbabilities /></Grid>
+          </Grid>
+
+          <Box id="payouts" sx={{ mt: { xs: 5, md: 6 } }}>
+            <RoulettePayout />
+          </Box>
+
+          <Grid id="history" container spacing={3} sx={{ mt: { xs: 5, md: 6 } }}>
+            <Grid item xs={12} md={7}><RouletteHistory address={hook.address} stage={hook.stage} /></Grid>
+            <Grid item xs={12} md={5}><RouletteLeaderboard stage={hook.stage} /></Grid>
           </Grid>
         </Box>
       </Box>

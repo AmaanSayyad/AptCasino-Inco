@@ -15,3 +15,5 @@ graphify-out/
 **/graphify-out/
 *.log
 *.tsbuildinfo
+
+.vercel

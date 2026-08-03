@@ -4,7 +4,7 @@ import { ConnectKitButton } from 'connectkit';
 import { useSwitchChain } from 'wagmi';
 import { APTCASINO_CHAIN } from '@/lib/baseSepolia';
 
-export default function ConnectWalletButton({ className = '', label = 'Connect Base Wallet' }) {
+export default function ConnectWalletButton({ className = '', label = 'Connect Wallet' }) {
   const { switchChain, isPending: isSwitching } = useSwitchChain();
 
   return (
