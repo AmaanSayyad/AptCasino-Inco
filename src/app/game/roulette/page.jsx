@@ -728,6 +728,13 @@ export default function RoulettePage() {
             >
               {hook.claimPending || hook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
             </button>
+            {hook.claimSucceeded && (
+              <Typography variant="body2" sx={{ color: '#14D854', mt: 1 }}>
+                Ticket claimed{hook.claimTicketId ? ` (#${hook.claimTicketId})` : ''} —{' '}
+                {hook.claimTxHash ? <a href={basescanUrl('tx', hook.claimTxHash)} target="_blank" rel="noreferrer" style={{ color: '#14D854' }}>view on BaseScan ↗</a> : 'minted to your wallet.'}
+              </Typography>
+            )}
+            {hook.claimError && <Typography variant="body2" sx={{ color: '#f87171', mt: 1 }}>{hook.claimError}</Typography>}
           </Box>
 
           <Box sx={{ mt: { xs: 5, md: 6 } }}>

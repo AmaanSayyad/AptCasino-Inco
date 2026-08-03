@@ -8,6 +8,7 @@ import { HiOutlineChartBar } from 'react-icons/hi';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
 import { useMinesSession } from '@/lib/inco/useMinesSession';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
+import { basescanUrl } from '@/lib/baseSepolia';
 import MinesForm from './components/MinesForm';
 import MinesBoard from './components/MinesBoard';
 import MinesGameDetail from './components/MinesGameDetail';
@@ -189,6 +190,13 @@ export default function Mines() {
             >
               {gameHook.claimPending || gameHook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
             </button>
+            {gameHook.claimSucceeded && (
+              <p className="mt-2 text-xs text-emerald-300">
+                Ticket claimed{gameHook.claimTicketId ? ` (#${gameHook.claimTicketId})` : ''} —{' '}
+                {gameHook.claimTxHash ? <a href={basescanUrl('tx', gameHook.claimTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan ↗</a> : 'minted to your wallet.'}
+              </p>
+            )}
+            {gameHook.claimError && <p className="mt-2 text-xs text-red-300">{gameHook.claimError}</p>}
           </div>
         </div>
 

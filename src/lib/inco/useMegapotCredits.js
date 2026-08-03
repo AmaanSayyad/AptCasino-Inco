@@ -37,6 +37,7 @@ export function useMegapotCredits(treasury) {
   const [treasuryCredits, setTreasuryCredits] = useState(0);
   const [treasuryClaimPending, setTreasuryClaimPending] = useState(false);
   const [error, setError] = useState('');
+  const [treasuryClaimResult, setTreasuryClaimResult] = useState(null);
 
   useEffect(() => {
     if (!address) return undefined;
@@ -53,6 +54,7 @@ export function useMegapotCredits(treasury) {
   async function claimTreasuryTicket() {
     if (!address || !treasury) return null;
     setTreasuryClaimPending(true);
+    setTreasuryClaimResult(null);
     try {
       const active = await treasury.ensureSession();
       const response = await fetch('/api/treasury/megapot/claim', {
@@ -60,6 +62,7 @@ export function useMegapotCredits(treasury) {
       }).then((r) => r.json());
       if (!response.ok) throw new Error(response.error || 'Claim failed.');
       setTreasuryCredits((c) => Math.max(0, c - 1000));
+      setTreasuryClaimResult({ ticketId: response.ticketId, hash: response.hash });
       return response;
     } catch (claimError) {
       setError(friendlyWalletError(claimError, 'Claim failed.'));
@@ -79,12 +82,19 @@ export function useMegapotCredits(treasury) {
     return null;
   }
 
+  // Unified success info regardless of which pool the ticket came from — the UI
+  // previously called claim() and showed nothing at all on success (the treasury
+  // path has no persistent tx object like the on-chain path's useWaitForTransactionReceipt).
+  const claimSucceeded = claimReceipt.isSuccess || Boolean(treasuryClaimResult);
+  const claimTxHash = treasuryClaimResult?.hash || claimHash;
+
   return {
     credits: onChainCredits + treasuryCredits,
     vaultConfigured, canClaim, claim, claimError: error,
     claimPending: treasuryClaimPending || claimOnChainPending,
     claimReceiptLoading: claimReceipt.isLoading,
     claimReceiptSuccess: claimReceipt.isSuccess,
+    claimSucceeded, claimTxHash, claimTicketId: treasuryClaimResult?.ticketId,
     rewardVaultAbi, rewardVaultAddress,
   };
 }

@@ -258,6 +258,13 @@ export default function WheelPage() {
               >
                 {game.claimPending || game.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
               </button>
+              {game.claimSucceeded && (
+                <p className="mt-2 text-xs text-emerald-300">
+                  Ticket claimed{game.claimTicketId ? ` (#${game.claimTicketId})` : ''} —{' '}
+                  {game.claimTxHash ? <a href={basescanUrl('tx', game.claimTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan ↗</a> : 'minted to your wallet.'}
+                </p>
+              )}
+              {game.claimError && <p className="mt-2 text-xs text-red-300">{game.claimError}</p>}
             </div>
             {game.settleHash && (
               <a className="text-center text-xs text-emerald-300 hover:underline" href={basescanUrl('tx', game.settleHash)} target="_blank" rel="noreferrer">View last settlement on BaseScan ↗</a>

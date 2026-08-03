@@ -16,6 +16,7 @@ import { parseUnits, formatUnits } from 'viem';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { riskLabelToIndex } from '@/lib/plinko/plinkoBoard';
+import { basescanUrl } from '@/lib/baseSepolia';
 import BalanceChip from '@/components/treasury/BalanceChip';
 import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 
@@ -173,6 +174,13 @@ export default function Plinko() {
                 className="mt-3 w-full rounded-lg bg-fuchsia-500 px-4 py-2 text-sm font-black disabled:opacity-40">
                 {g.claimPending || g.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
               </button>
+              {g.claimSucceeded && (
+                <p className="mt-2 text-xs text-emerald-300">
+                  Ticket claimed{g.claimTicketId ? ` (#${g.claimTicketId})` : ''} —{' '}
+                  {g.claimTxHash ? <a href={basescanUrl('tx', g.claimTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan ↗</a> : 'minted to your wallet.'}
+                </p>
+              )}
+              {g.claimError && <p className="mt-2 text-xs text-red-300">{g.claimError}</p>}
             </div>
           </div>
           <div className="w-full xl:w-3/4">
