@@ -13,6 +13,7 @@ import { useMinesSession, minesStageCopy } from '@/lib/inco/useMinesSession';
 import { minesMultiplier } from '@/lib/inco/payoutMath';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import BalanceChip from '@/components/treasury/BalanceChip';
+import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import MinesHowToModal from './MinesHowToModal';
 import WinConfetti from './WinConfetti';
 import AIAutoBetting from './AIAutoBetting';
@@ -160,11 +161,11 @@ export default function MinesBoard() {
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} closeOnClick pauseOnHover theme="dark" />
       <MinesHowToModal open={showInfo} onClose={() => setShowInfo(false)} totalTiles={TOTAL_TILES} />
 
-      <div className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      <div className="mb-2 flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
         <BalanceChip treasury={gameHook.treasury} />
-        <button type="button" onClick={() => session.setMode(session.mode === 'treasury' ? 'wallet' : 'treasury')} disabled={session.active} className="text-[11px] font-semibold text-white/45 underline decoration-dotted hover:text-white/70 disabled:opacity-40">
-          {session.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
-        </button>
+      </div>
+      <div className="mb-3 max-w-md">
+        <PlayModeToggle mode={session.mode} setMode={session.setMode} disabled={session.active} />
       </div>
 
       <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-2">

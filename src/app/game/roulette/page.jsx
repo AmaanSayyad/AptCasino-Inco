@@ -5,10 +5,11 @@ import { Box, Grid, Typography } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { useReadContract } from 'wagmi';
 import { motion } from 'framer-motion';
-import { FaChartLine, FaCoins, FaTrophy, FaBalanceScale, FaPercentage } from 'react-icons/fa';
+import { FaChartLine, FaCoins, FaTrophy, FaBalanceScale, FaPercentage, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
 import { GiRollingDices, GiPokerHand, GiCardRandom } from 'react-icons/gi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import BalanceChip from '@/components/treasury/BalanceChip';
+import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { isRedNumber } from '@/lib/inco/payoutMath';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
@@ -212,6 +213,24 @@ export default function RoulettePage() {
   const spinSoundRef = useRef(null);
   const winSoundRef = useRef(null);
   const chipSelectRef = useRef(null);
+  const chipPutRef = useRef(null);
+  const menuClickRef = useRef(null);
+  const backgroundMusicRef = useRef(null);
+  const ambientSoundsRef = useRef(null);
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    for (const ref of [spinSoundRef, winSoundRef, chipSelectRef, chipPutRef, menuClickRef, backgroundMusicRef, ambientSoundsRef]) {
+      if (ref.current) ref.current.muted = isMuted;
+    }
+    if (isMuted) {
+      backgroundMusicRef.current?.pause();
+      ambientSoundsRef.current?.pause();
+    } else {
+      backgroundMusicRef.current?.play().catch(() => {});
+      ambientSoundsRef.current?.play().catch(() => {});
+    }
+  }, [isMuted]);
 
   const balance = useReadContract({
     address: usdcAddress, abi: usdcAbi, functionName: 'balanceOf',
@@ -220,7 +239,7 @@ export default function RoulettePage() {
   });
 
   function placeChip(betType, selection, numbers = []) {
-    chipSelectRef.current?.play?.().catch(() => {});
+    chipPutRef.current?.play?.().catch(() => {});
     setBets((current) => {
       const key = betKey(betType, selection, numbers);
       const existing = current.find((b) => betKey(b.betType, b.selection, b.numbers ?? []) === key);
@@ -231,7 +250,7 @@ export default function RoulettePage() {
       return [...current, { betType, selection, numbers, amount: chipValue }];
     });
   }
-  function clearBets() { setBets([]); setPendingNumbers([]); }
+  function clearBets() { menuClickRef.current?.play?.().catch(() => {}); setBets([]); setPendingNumbers([]); }
   function removeBet(betType, selection, numbers) {
     const key = betKey(betType, selection, numbers);
     setBets((current) => current.filter((b) => betKey(b.betType, b.selection, b.numbers ?? []) !== key));
@@ -280,19 +299,33 @@ export default function RoulettePage() {
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ minHeight: '100vh', bgcolor: '#080005', pb: 10 }}>
+      <Box className="site-game-page" sx={{ bgcolor: '#080005' }}>
         <audio ref={spinSoundRef} src="/sounds/ball-spin.mp3" preload="auto" />
         <audio ref={winSoundRef} src="/sounds/win-chips.mp3" preload="auto" />
         <audio ref={chipSelectRef} src="/sounds/chip-select.mp3" preload="auto" />
+        <audio ref={chipPutRef} src="/sounds/chip-put.mp3" preload="auto" />
+        <audio ref={menuClickRef} src="/sounds/menu.mp3" preload="auto" />
+        <audio ref={backgroundMusicRef} src="/sounds/background-music.mp3" preload="auto" loop />
+        <audio ref={ambientSoundsRef} src="/sounds/ambient-sounds.mp3" preload="auto" loop />
 
         <RouletteHeader />
 
-        <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
+        <Box sx={{ maxWidth: { xs: '100%', md: 1680, lg: 1800 }, mx: 'auto', px: { xs: 2, md: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-            <BalanceChip treasury={hook.treasury} />
-            <button type="button" onClick={() => hook.setMode(hook.mode === 'treasury' ? 'wallet' : 'treasury')} style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', textDecoration: 'underline dotted' }}>
-              {hook.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
-            </button>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <BalanceChip treasury={hook.treasury} />
+              <button
+                type="button"
+                aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}
+                onClick={() => setIsMuted((m) => !m)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: '#fff' }}
+              >
+                {isMuted ? <FaVolumeMute /> : <FaVolumeUp />}
+              </button>
+            </Box>
+          </Box>
+          <Box sx={{ mb: 2, maxWidth: 420 }}>
+            <PlayModeToggle mode={hook.mode} setMode={hook.setMode} />
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', py: 1, mb: 3, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 2, gap: 1 }}>

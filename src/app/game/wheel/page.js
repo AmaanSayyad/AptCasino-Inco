@@ -11,6 +11,7 @@ import { GiWheelbarrow, GiSpinningBlades } from 'react-icons/gi';
 import { HiOutlineChartBar } from 'react-icons/hi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import BalanceChip from '@/components/treasury/BalanceChip';
+import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
@@ -228,13 +229,9 @@ export default function WheelPage() {
               <>
                 <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
                   <BalanceChip treasury={game.treasury} />
-                  <button
-                    type="button"
-                    onClick={() => game.setMode(game.mode === 'treasury' ? 'wallet' : 'treasury')}
-                    className="text-[11px] font-semibold text-white/45 underline decoration-dotted hover:text-white/70"
-                  >
-                    {game.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
-                  </button>
+                </div>
+                <div className="mt-2">
+                  <PlayModeToggle mode={game.mode} setMode={game.setMode} />
                 </div>
                 <BettingPanel
                   wager={game.wager}

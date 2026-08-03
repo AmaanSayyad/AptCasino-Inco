@@ -54,6 +54,21 @@ function serialized(fn) {
   return next;
 }
 
+/** Public RPC nodes can lag a block behind the one that confirmed a receipt — the very
+ *  next call (e.g. a transferFrom relying on this allowance) can hit a stale node and
+ *  see the old value. Wait for 2 confirmations, then poll until the read is consistent. */
+async function ensureAllowance(wallet, spender, wager) {
+  const readAllowance = () => publicClient.readContract({ address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [wallet.account.address, spender] });
+  if ((await readAllowance()) >= wager) return;
+  const approveHash = await wallet.writeContract({ address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [spender, wager * 100n] });
+  await publicClient.waitForTransactionReceipt({ hash: approveHash, confirmations: 2 });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if ((await readAllowance()) >= wager) return;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error('USDC allowance did not propagate after approve');
+}
+
 /**
  * Executes one confidential round using the treasury's own on-chain funds/signature
  * (the player never signs anything here — see src/app/api/treasury/play/route.js for
@@ -65,12 +80,7 @@ export function playAndSettle({ game, functionName, args, wager }) {
     if (!isContractConfigured(aptCasinoAddress)) throw new Error('AptCasino contract is not configured.');
     const wallet = walletClient();
     const fee = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
-
-    const allowance = await publicClient.readContract({ address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [wallet.account.address, aptCasinoAddress] });
-    if (allowance < wager) {
-      const approveHash = await wallet.writeContract({ address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager * 100n] });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
-    }
+    await ensureAllowance(wallet, aptCasinoAddress, wager);
 
     const playHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName, args, value: fee });
     const playReceipt = await publicClient.waitForTransactionReceipt({ hash: playHash });
@@ -96,12 +106,7 @@ export function startAndCommitMines({ mineCount, wager }) {
     if (!isContractConfigured(aptCasinoAddress)) throw new Error('AptCasino contract is not configured.');
     const wallet = walletClient();
     const fee = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
-
-    const allowance = await publicClient.readContract({ address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [wallet.account.address, aptCasinoAddress] });
-    if (allowance < wager) {
-      const approveHash = await wallet.writeContract({ address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager * 100n] });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
-    }
+    await ensureAllowance(wallet, aptCasinoAddress, wager);
 
     const startHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'startMines', args: [mineCount, wager], value: fee });
     const startReceipt = await publicClient.waitForTransactionReceipt({ hash: startHash });
