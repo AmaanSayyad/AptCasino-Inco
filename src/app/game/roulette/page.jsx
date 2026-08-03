@@ -664,8 +664,15 @@ export default function RoulettePage() {
             Swipe left or right to view the full table
           </Typography>
 
-          {/* Controls row — bet size, undo/clear, play mode, spin. */}
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'flex-start' }, gap: 2 }}>
+          {/* Controls row — matches the original's column order: title+info, bet size, undo/clear+spin, stats. */}
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'flex-start' }, justifyContent: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'center', md: 'flex-start' }, gap: 1 }}>
+              <Typography variant="h5" color="text.accent">Roulette</Typography>
+              <RouletteInfoTriggers activePanel={helpPanel} onOpen={setHelpPanel} />
+              <RouletteInfoDialog panel={helpPanel} onClose={() => setHelpPanel(null)} onSwitchPanel={setHelpPanel} />
+              <PlayModeToggle mode={hook.mode} setMode={hook.setMode} disabled={hook.busy} />
+            </Box>
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { md: 260 } }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip value</Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -673,22 +680,18 @@ export default function RoulettePage() {
                   <Box key={v} onClick={() => { setBet(v); playSound(chipSelectRef); }} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: bet === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: bet === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
                 ))}
               </Box>
-              <PlayModeToggle mode={hook.mode} setMode={hook.setMode} disabled={hook.busy} />
-            </Box>
-
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <RouletteInfoTriggers activePanel={helpPanel} onOpen={setHelpPanel} />
-              <RouletteInfoDialog panel={helpPanel} onClose={() => setHelpPanel(null)} onSwitchPanel={setHelpPanel} />
-              <Tooltip title={<Typography>Undo last bet</Typography>}>
-                <span><IconButton disabled={history.length === 0 || hook.busy} onClick={undo}><UndoIcon /></IconButton></span>
-              </Tooltip>
-              <Tooltip title={<Typography>Clear bets</Typography>}>
-                <span><IconButton disabled={hook.busy} onClick={clearBets}><ClearIcon /></IconButton></span>
-              </Tooltip>
-            </Box>
-
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', md: 'flex-end' }, gap: 0.5 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>Total on table: <b style={{ color: '#fff' }}>{total.toFixed(2)} USDC</b></Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Tooltip title={<Typography>Undo last bet</Typography>}>
+                  <span><IconButton disabled={history.length === 0 || hook.busy} onClick={undo}><UndoIcon /></IconButton></span>
+                </Tooltip>
+                <Tooltip title={<Typography>Clear bets</Typography>}>
+                  <span><IconButton disabled={hook.busy} onClick={clearBets}><ClearIcon /></IconButton></span>
+                </Tooltip>
+              </Box>
               {!hook.isConnected ? (
                 <ConnectWalletButton className="w-full md:w-auto" />
               ) : winningNumber !== null ? (
