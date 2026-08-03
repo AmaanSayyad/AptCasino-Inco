@@ -30,29 +30,33 @@ export default function MinesForm({ gameHook, session }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-purple-800/25 bg-[#0f0612]/90 shadow-lg">
-      <div className="border-b border-purple-900/25 bg-gradient-to-r from-[#1a0818]/80 to-[#120610]/80 px-4 py-3.5">
-        <div className="flex items-center gap-3">
-          <div className={`rounded-lg border p-2 ${isAuto ? 'border-blue-500/25 bg-blue-500/10' : 'border-purple-500/25 bg-purple-500/10'}`}>
-            {isAuto ? <FaRobot className="text-sm text-blue-400" /> : <FaDice className="text-sm text-purple-400" />}
-          </div>
-          <div>
-            <h3 className="text-base font-semibold leading-tight text-white">{isAuto ? 'Auto Betting' : 'Manual Betting'}</h3>
-            <p className="mt-0.5 text-xs text-white/45">{isAuto ? 'Runs multiple rounds with stop limits' : 'Pick tiles yourself each round'}</p>
-          </div>
-        </div>
+    <div className="w-full">
+      {/* Tab switcher — a standalone pill bar above the form, matching the original's
+          generic <Tabs> component (which wraps a separate DynamicForm per tab) rather
+          than living inside the form card below. */}
+      <div className="mb-2 flex items-center justify-center gap-4 rounded-3xl border-2 border-gray-800 bg-[#09011C] p-2">
+        <button type="button" onClick={() => setTab('manual')} className={`flex-1 rounded-2xl py-2.5 text-sm font-semibold transition-all ${!isAuto ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md' : 'text-white/45 hover:text-white/70'}`}>Manual</button>
+        <button type="button" onClick={() => setTab('auto')} className={`flex-1 rounded-2xl py-2.5 text-sm font-semibold transition-all ${isAuto ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-white/45 hover:text-white/70'}`}>Auto</button>
       </div>
 
-      <div className="space-y-4 p-4">
-        <BalanceChip treasury={gameHook.treasury} />
-        <PlayModeToggle mode={session.mode} setMode={session.setMode} disabled={session.active} />
-
-        <div className="flex rounded-xl border border-white/10 bg-black/30 p-1 text-xs font-bold uppercase tracking-wider">
-          <button type="button" onClick={() => setTab('manual')} className={`flex-1 rounded-lg py-2 transition-all ${!isAuto ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md' : 'text-white/45 hover:text-white/70'}`}>Manual</button>
-          <button type="button" onClick={() => setTab('auto')} className={`flex-1 rounded-lg py-2 transition-all ${isAuto ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-white/45 hover:text-white/70'}`}>Auto</button>
+      <div className="overflow-hidden rounded-xl border border-purple-800/25 bg-[#0f0612]/90 shadow-lg">
+        <div className="border-b border-purple-900/25 bg-gradient-to-r from-[#1a0818]/80 to-[#120610]/80 px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-lg border p-2 ${isAuto ? 'border-blue-500/25 bg-blue-500/10' : 'border-purple-500/25 bg-purple-500/10'}`}>
+              {isAuto ? <FaRobot className="text-sm text-blue-400" /> : <FaDice className="text-sm text-purple-400" />}
+            </div>
+            <div>
+              <h3 className="text-base font-semibold leading-tight text-white">{isAuto ? 'Auto Betting' : 'Manual Betting'}</h3>
+              <p className="mt-0.5 text-xs text-white/45">{isAuto ? 'Runs multiple rounds with stop limits' : 'Pick tiles yourself each round'}</p>
+            </div>
+          </div>
         </div>
 
-        <div>
+        <div className="space-y-4 p-4">
+          <BalanceChip treasury={gameHook.treasury} />
+          <PlayModeToggle mode={session.mode} setMode={session.setMode} disabled={session.active} />
+
+          <div>
           <label className="mb-1 block text-xs font-medium text-white/60">Bet Amount (USDC)</label>
           <input
             type="number" min="0.1" max="10" step="0.1"
@@ -102,6 +106,7 @@ export default function MinesForm({ gameHook, session }) {
               : 'Click tiles to reveal gems and raise your multiplier. Cash out anytime before hitting a mine.'}
           </p>
         </div>
+      </div>
       </div>
     </div>
   );
