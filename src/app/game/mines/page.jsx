@@ -178,6 +178,20 @@ export default function Mines() {
           </motion.div>
         </div>
 
+        <div className="mt-4 site-page-pad-x">
+          <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
+            <p className="mt-1 text-2xl font-black">{gameHook.credits} <span className="text-sm text-white/50">/ 1000</span></p>
+            <button
+              disabled={!gameHook.vaultConfigured || !gameHook.canClaim || gameHook.claimPending || gameHook.claimReceiptLoading}
+              onClick={() => gameHook.claim()}
+              className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black disabled:opacity-40 md:w-auto"
+            >
+              {gameHook.claimPending || gameHook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
+            </button>
+          </div>
+        </div>
+
         <div className="mt-10 site-page-pad-x">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
             <button

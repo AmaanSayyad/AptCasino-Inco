@@ -81,7 +81,7 @@ export function useTreasuryAccount() {
         body: JSON.stringify({ wallet: address, txHash }),
       }).then((r) => r.json());
       if (typeof res.balanceRaw === 'number') setBalanceRaw(res.balanceRaw);
-      return res;
+      return { ...res, txHash };
     } catch (depositError) {
       setError(friendlyWalletError(depositError, 'Deposit failed.'));
       return null;

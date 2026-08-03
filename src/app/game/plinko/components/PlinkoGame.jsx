@@ -35,10 +35,14 @@ const BALL_CATEGORY = 0x0002;
  * just feeding it the real settled bucket instead of the original's rigged
  * client-side pick (its own code comment: "~70% losing slots... not used for
  * payout" — i.e. the original's own RNG wasn't even how it decided who won).
- * The ball rests at the floor (real physics, not teleported away) until the
- * real bucket is known, then snaps sideways into that exact slot.
+ *
+ * The drop only starts once the round is fully settled and the real bucket is
+ * already known — waiting several seconds on Base/Inco with the ball just
+ * sitting at the floor felt broken. So instead: show a clear "settling"
+ * status while the on-chain round is in flight, then play one smooth
+ * fall-and-land animation the instant the outcome arrives.
  */
-export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, recentBets = [] }) {
+export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, recentBets = [], stageLabel }) {
   const board = useMemo(() => resolvePlinkoBoard(rowCount, riskLevel), [rowCount, riskLevel]);
   const { multipliers, pins, pinsLastRowXCoords } = board;
   const pinDistanceX = useMemo(() => getPinDistanceX(rowCount, board.binCount), [rowCount, board.binCount]);
@@ -110,9 +114,16 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
     return () => { Engine.clear(engine); };
   }, [pins, pinsLastRowXCoords, pinDistanceX, pinRadius, rowCount]);
 
-  // Drop a real ball whenever a new round starts.
+  // Drop a real ball the instant a NEW settled outcome arrives — not while the round is
+  // still in flight. `handledOutcomeRef` tracks which outcome we've already animated for,
+  // so this fires exactly once per round regardless of how many times `stage`/`outcome`
+  // re-render while staying 'done'.
+  const handledOutcomeRef = useRef(null);
   useEffect(() => {
-    if (!busy || !engineRef.current) return undefined;
+    if (stage !== 'done' || outcome?.bucket == null || !engineRef.current) return undefined;
+    if (handledOutcomeRef.current === outcome) return undefined;
+    handledOutcomeRef.current = outcome;
+
     const { Bodies, World } = Matter;
     setLandedBin(null);
     restingRef.current = false;
@@ -125,6 +136,7 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
     const ballRadius = pinRadius * 2;
     const { friction, frictionAir } = getBallFrictions(rowCount);
 
+    if (ballRef.current) World.remove(engineRef.current.world, ballRef.current);
     const ball = Bodies.circle(startX, 0, ballRadius, {
       restitution: 0.8,
       friction,
@@ -136,36 +148,39 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
     setBallVisible(true);
     try { ballDropAudioRef.current && (ballDropAudioRef.current.currentTime = 0, ballDropAudioRef.current.play().catch(() => {})); } catch {}
 
+    const bucket = Number(outcome.bucket);
+    const centerX = binCenterX(bucket, pinsLastRowXCoords);
     const floorY = plinkoLastPinRowY(rowCount);
     function frame() {
       if (!engineRef.current || !ballRef.current) return;
       Matter.Engine.update(engineRef.current, 1000 / 60);
       const { x, y } = ballRef.current.position;
+      if (y >= floorY - ballRadius && !restingRef.current) {
+        // Physically rested — the real bucket is already known, so slide straight into
+        // it (same snap-to-bin technique the original used) instead of a long idle wait.
+        restingRef.current = true;
+        Matter.Body.setPosition(ballRef.current, { x: centerX, y: floorY });
+        setBallX(centerX);
+        setBallY(floorY);
+        setLandedBin(bucket);
+        try { binLandAudioRef.current && (binLandAudioRef.current.currentTime = 0, binLandAudioRef.current.play().catch(() => {})); } catch {}
+        return;
+      }
       setBallX(x);
       setBallY(Math.min(y, floorY));
-      if (y >= floorY - ballRadius && !restingRef.current) {
-        restingRef.current = true; // physically resting; wait for the real bucket to snap into place
-      }
       rafRef.current = requestAnimationFrame(frame);
     }
     rafRef.current = requestAnimationFrame(frame);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [busy, rowCount, pinDistanceX, pinRadius, pins]);
-
-  // Once the real on-chain bucket is known, snap the ball into that exact slot —
-  // same technique the original used, just fed the real bucket instead of a rigged pick.
-  useEffect(() => {
-    if (stage !== 'done' || outcome?.bucket == null) return;
-    const bucket = Number(outcome.bucket);
-    const centerX = binCenterX(bucket, pinsLastRowXCoords);
-    if (ballRef.current) Matter.Body.setPosition(ballRef.current, { x: centerX, y: ballRef.current.position.y });
-    setBallX(centerX);
-    setBallY(plinkoLastPinRowY(rowCount));
-    setLandedBin(bucket);
-    try { binLandAudioRef.current && (binLandAudioRef.current.currentTime = 0, binLandAudioRef.current.play().catch(() => {})); } catch {}
-  }, [stage, outcome, pinsLastRowXCoords, rowCount]);
+  }, [stage, outcome, rowCount, pinDistanceX, pinRadius, pins, pinsLastRowXCoords]);
 
   useEffect(() => () => { if (engineRef.current) Matter.Engine.clear(engineRef.current); }, []);
+
+  // Clear the previous round's landed ball the moment a new one starts, so the board
+  // reads as "waiting for this round" rather than showing stale results during the wait.
+  useEffect(() => {
+    if (busy) { setBallVisible(false); setLandedBin(null); }
+  }, [busy]);
 
   const recentBetSlots = useMemo(() => {
     const filled = recentBets.slice(0, 5);
@@ -201,6 +216,12 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
                 <circle cx={ballX} cy={ballY} r={pinRadius * 2} fill="#ff6b6b" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 107, 107, 0.9))' }} />
               )}
             </svg>
+            {busy && !ballVisible && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1A0015]/70">
+                <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-fuchsia-400" aria-hidden />
+                <p className="text-xs font-semibold text-white/80">{stageLabel || 'Settling round…'}</p>
+              </div>
+            )}
             <div className="pointer-events-none absolute inset-0 z-20">
               {multipliers.map((multiplier, index) => {
                 const layout = multiplierSlotLayout[index];

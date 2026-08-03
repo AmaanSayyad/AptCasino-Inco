@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { basescanUrl } from '@/lib/baseSepolia';
 
 const QUICK_AMOUNTS = [1, 5, 10, 25, 50, 100];
 const MIN_DEPOSIT = 1;
@@ -24,6 +25,7 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
   const [tab, setTab] = useState('deposit');
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [lastTxHash, setLastTxHash] = useState(null);
 
   const { balance, balanceRaw, deposit, withdraw, busy, error, refreshBalance, configured } = treasury;
 
@@ -48,12 +50,14 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
     withdrawParsed < MIN_WITHDRAW || withdrawParsed > currentBalance;
 
   async function handleDeposit() {
+    setLastTxHash(null);
     const res = await deposit(depositAmount);
-    if (res?.ok) setDepositAmount('');
+    if (res?.ok) { setDepositAmount(''); setLastTxHash(res.txHash ?? null); }
   }
   async function handleWithdraw() {
+    setLastTxHash(null);
     const res = await withdraw(withdrawAmount);
-    if (res?.ok) setWithdrawAmount('');
+    if (res?.ok) { setWithdrawAmount(''); setLastTxHash(res.txHash ?? null); }
   }
 
   return createPortal(
@@ -100,7 +104,7 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
             <div className="mt-4 px-5 sm:px-6">
               <div className="flex rounded-xl border border-white/10 bg-black/40 p-1">
                 {[{ id: 'deposit', label: 'Deposit' }, { id: 'withdraw', label: 'Withdraw' }].map(({ id, label }) => (
-                  <button key={id} type="button" onClick={() => setTab(id)}
+                  <button key={id} type="button" onClick={() => { setTab(id); setLastTxHash(null); }}
                     className={`flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wider transition-all ${tab === id ? 'bg-gradient-to-r from-red-magic/90 to-blue-magic/90 text-white shadow-md' : 'text-white/45 hover:text-white/70'}`}>
                     {label}
                   </button>
@@ -137,6 +141,12 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
                   </div>
                   <button type="button" onClick={() => setWithdrawAmount(balance)} className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-semibold text-white/60 hover:bg-white/10">Max</button>
                 </div>
+              )}
+              {lastTxHash && !error && (
+                <p className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-2 text-[11px] text-emerald-200">
+                  {tab === 'deposit' ? 'Deposit' : 'Withdrawal'} confirmed —{' '}
+                  <a href={basescanUrl('tx', lastTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan</a>
+                </p>
               )}
               {error && <p className="mt-3 rounded-lg border border-red-400/30 bg-red-400/10 px-2.5 py-2 text-[11px] text-red-200">{error}</p>}
             </div>

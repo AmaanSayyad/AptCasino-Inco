@@ -252,7 +252,7 @@ export default function WheelPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
               <p className="mt-1 text-2xl font-black">{game.credits} <span className="text-sm text-white/50">/ 1000</span></p>
               <button
-                disabled={!game.vaultConfigured || game.credits < 1000 || game.claimPending || game.claimReceiptLoading}
+                disabled={!game.vaultConfigured || !game.canClaim || game.claimPending || game.claimReceiptLoading}
                 onClick={() => game.claim({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'claimTicket' })}
                 className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black disabled:opacity-40"
               >

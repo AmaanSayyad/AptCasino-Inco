@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
+import { useState } from 'react';
+import { useAccount } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { runConfidentialGame } from '@/lib/inco/gameEngine';
-import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
-import { isContractConfigured } from '@/lib/baseSepolia';
 import { useTreasuryAccount } from '@/lib/treasury/useTreasuryAccount';
+import { useMegapotCredits } from '@/lib/inco/useMegapotCredits';
 import { friendlyWalletError } from '@/lib/walletError';
 
 // Mines is a multi-step session (start/reveal/cashOut), not a single play->settle
@@ -33,56 +32,8 @@ export function useConfidentialGame(game) {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
 
-  const vaultConfigured = isContractConfigured(rewardVaultAddress);
-  const creditsRead = useReadContract({
-    address: rewardVaultAddress,
-    abi: rewardVaultAbi,
-    functionName: 'credits',
-    args: address ? [address] : undefined,
-    query: { enabled: Boolean(address && vaultConfigured), refetchInterval: 15_000 },
-  });
-  const { writeContract: claimOnChain, data: claimHash, isPending: claimOnChainPending } = useWriteContract();
-  const claimReceipt = useWaitForTransactionReceipt({ hash: claimHash });
-  const credits = Number(creditsRead.data ?? 0n);
   const treasury = useTreasuryAccount();
-
-  // House-balance rounds settle with the treasury as msg.sender on-chain, so real Megapot
-  // credits pool under the treasury's own address there, not this wallet's — the backend
-  // mirrors the same accrual formula per real player in an off-chain ledger instead (see
-  // src/lib/treasury/megapot.js), redeemable via claimTicketFor. In 'wallet' mode the
-  // player IS msg.sender, so the on-chain credits()/claimTicket() above already work.
-  const [treasuryCredits, setTreasuryCredits] = useState(0);
-  const [treasuryClaimPending, setTreasuryClaimPending] = useState(false);
-  useEffect(() => {
-    if (mode !== 'treasury' || !address) return undefined;
-    let cancelled = false;
-    const poll = () => fetch(`/api/treasury/megapot/credits?wallet=${address}`)
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setTreasuryCredits(Number(data.credits ?? 0)); })
-      .catch(() => {});
-    poll();
-    const id = setInterval(poll, 15_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [mode, address]);
-
-  async function claimTreasuryTicket() {
-    if (!address) return null;
-    setTreasuryClaimPending(true);
-    try {
-      const active = await treasury.ensureSession();
-      const response = await fetch('/api/treasury/megapot/claim', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${active.token}` },
-      }).then((r) => r.json());
-      if (!response.ok) throw new Error(response.error || 'Claim failed.');
-      setTreasuryCredits((c) => Math.max(0, c - 1000));
-      return response;
-    } catch (claimError) {
-      setError(friendlyWalletError(claimError, 'Claim failed.'));
-      return null;
-    } finally {
-      setTreasuryClaimPending(false);
-    }
-  }
+  const megapot = useMegapotCredits(treasury);
 
   async function play(betArgs) {
     if (!address) return null;
@@ -99,7 +50,6 @@ export function useConfidentialGame(game) {
         onStage: setStage,
       });
       setResult(response);
-      creditsRead.refetch();
       // Best-effort history/leaderboard record — the round is already settled on-chain
       // regardless of whether this call succeeds, so failures here are logged, not thrown.
       fetch('/api/games/log', {
@@ -139,7 +89,6 @@ export function useConfidentialGame(game) {
         onStage: setStage,
       });
       setResult(response);
-      creditsRead.refetch();
       fetch('/api/games/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -177,7 +126,6 @@ export function useConfidentialGame(game) {
       const normalized = { gameId: response.outcome?.gameId, playHash: response.playHash, settleHash: response.settleHash, outcome: response.outcome };
       setResult(normalized);
       treasury.refreshBalance();
-      creditsRead.refetch();
       return normalized;
     } catch (playError) {
       setStage('error');
@@ -190,15 +138,10 @@ export function useConfidentialGame(game) {
   const payout = outcome?.payout != null ? formatUnits(outcome.payout, USDC_DECIMALS) : null;
   const busy = ['approving', 'betting', 'revealing', 'settling'].includes(stage);
 
-  const isTreasuryMode = mode === 'treasury';
   return {
     address, isConnected, wager, setWager, mode, setMode, stage, error, result, outcome, payout, play, playBets, playTreasury, busy,
-    credits: isTreasuryMode ? treasuryCredits : credits,
-    vaultConfigured,
-    claim: isTreasuryMode ? claimTreasuryTicket : claimOnChain,
-    claimPending: isTreasuryMode ? treasuryClaimPending : claimOnChainPending,
-    claimReceiptLoading: isTreasuryMode ? false : claimReceipt.isLoading,
-    rewardVaultAbi, rewardVaultAddress, settleHash: result?.settleHash,
+    ...megapot,
+    settleHash: result?.settleHash,
     treasury,
   };
 }

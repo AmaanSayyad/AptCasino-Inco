@@ -719,7 +719,7 @@ export default function RoulettePage() {
             <Typography variant="body2" sx={{ color: '#f0abfc', fontWeight: 700, mb: 1 }}>Megapot progress</Typography>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800 }}>{hook.credits} <Typography component="span" sx={{ color: 'text.secondary', fontSize: 14 }}>/ 1000</Typography></Typography>
             <button
-              disabled={!hook.vaultConfigured || hook.credits < 1000 || hook.claimPending || hook.claimReceiptLoading}
+              disabled={!hook.vaultConfigured || !hook.canClaim || hook.claimPending || hook.claimReceiptLoading}
               onClick={() => hook.claim({ address: hook.rewardVaultAddress, abi: hook.rewardVaultAbi, functionName: 'claimTicket' })}
               className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-3 text-sm font-black disabled:opacity-40 md:w-auto"
             >

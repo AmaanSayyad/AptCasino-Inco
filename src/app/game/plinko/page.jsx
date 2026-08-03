@@ -12,7 +12,7 @@ import PlinkoWinProbabilities from './components/PlinkoWinProbabilities';
 import PlinkoPayouts from './components/PlinkoPayouts';
 import PlinkoLeaderboard from './components/PlinkoLeaderboard';
 import { gameData } from './config/gameDetail';
-import { parseUnits } from 'viem';
+import { parseUnits, formatUnits } from 'viem';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { riskLabelToIndex } from '@/lib/plinko/plinkoBoard';
@@ -103,13 +103,39 @@ export default function Plinko() {
   const [recentBets, setRecentBets] = useState([]);
   const g = useConfidentialGame('plinko');
 
-  async function onBet() {
+  async function placeBet() {
     const wagerRaw = parseUnits(g.wager, USDC_DECIMALS);
     const response = g.mode === 'treasury'
       ? await g.playTreasury({ risk: riskLabelToIndex(riskLevel), rows, wagerRaw: Number(wagerRaw) })
       : await g.play([riskLabelToIndex(riskLevel), rows]);
     if (response?.outcome) {
       setRecentBets((prev) => [outcomeToBetSlot(response.outcome, wagerRaw), ...prev].slice(0, 5));
+    }
+    return response;
+  }
+
+  async function manualBet() {
+    await placeBet();
+  }
+
+  /** Real sequential auto-bet loop — each round fully settles on-chain before the next starts. */
+  async function autoBet({ numberOfBets, winIncrease, lossIncrease, stopProfit, stopLoss }) {
+    const totalRounds = Math.max(1, Number(numberOfBets) || 10);
+    let totalProfit = 0;
+    const baseWager = g.wager;
+    for (let i = 0; i < totalRounds; i += 1) {
+      const before = Number(g.wager);
+      const response = await placeBet();
+      if (!response) break;
+      const payoutAmount = Number(formatUnits(response.outcome.payout, USDC_DECIMALS));
+      const profit = payoutAmount - before;
+      totalProfit += profit;
+      const next = profit > 0
+        ? (winIncrease > 0 ? before * (1 + winIncrease) : Number(baseWager))
+        : (lossIncrease > 0 ? before * (1 + lossIncrease) : Number(baseWager));
+      g.setWager(String(Math.max(0.1, next)));
+      if (stopProfit > 0 && totalProfit >= stopProfit) break;
+      if (stopLoss > 0 && totalProfit <= -stopLoss) break;
     }
   }
 
@@ -130,7 +156,7 @@ export default function Plinko() {
               wager={g.wager} setWager={g.setWager}
               riskLevel={riskLevel} setRiskLevel={setRiskLevel}
               rows={rows} setRows={setRows}
-              onBet={onBet} busy={g.busy} stageLabel={stageCopy[g.stage]}
+              onManualBet={manualBet} onAutoBet={autoBet} busy={g.busy} stageLabel={stageCopy[g.stage]}
             />
             {g.error && <p className="mt-3 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">{g.error}</p>}
             {g.outcome && g.stage === 'done' && (
@@ -142,7 +168,7 @@ export default function Plinko() {
             <div className="mt-4 rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-4 text-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
               <p className="mt-1 text-2xl font-black">{g.credits} <span className="text-sm text-white/50">/ 1000</span></p>
-              <button disabled={!g.vaultConfigured || g.credits < 1000 || g.claimPending || g.claimReceiptLoading}
+              <button disabled={!g.vaultConfigured || !g.canClaim || g.claimPending || g.claimReceiptLoading}
                 onClick={() => g.claim({ address: g.rewardVaultAddress, abi: g.rewardVaultAbi, functionName: 'claimTicket' })}
                 className="mt-3 w-full rounded-lg bg-fuchsia-500 px-4 py-2 text-sm font-black disabled:opacity-40">
                 {g.claimPending || g.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
@@ -150,7 +176,7 @@ export default function Plinko() {
             </div>
           </div>
           <div className="w-full xl:w-3/4">
-            <PlinkoGame rowCount={rows} riskLevel={riskLevel} busy={g.busy} stage={g.stage} outcome={g.outcome} recentBets={recentBets} />
+            <PlinkoGame rowCount={rows} riskLevel={riskLevel} busy={g.busy} stage={g.stage} outcome={g.outcome} recentBets={recentBets} stageLabel={stageCopy[g.stage]} />
           </div>
         </div>
       </div>

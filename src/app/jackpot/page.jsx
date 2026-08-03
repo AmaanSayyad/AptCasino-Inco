@@ -1,13 +1,15 @@
 'use client';
 
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
+import { useState } from 'react';
+import { useAccount, useReadContract } from 'wagmi';
 import { formatUnits, parseAbi } from 'viem';
 import Link from 'next/link';
 import Image from 'next/image';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import MagicBorder from '@/components/MagicBorder';
-import { MEGAPOT_TESTNET, isContractConfigured } from '@/lib/baseSepolia';
-import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
+import { MEGAPOT_TESTNET } from '@/lib/baseSepolia';
+import { useTreasuryAccount } from '@/lib/treasury/useTreasuryAccount';
+import { useMegapotCredits } from '@/lib/inco/useMegapotCredits';
 
 const jackpotAbi = parseAbi(['function ticketPrice() view returns (uint256)']);
 
@@ -19,13 +21,18 @@ const EARN_FROM = [
 ];
 
 export default function JackpotPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const price = useReadContract({ address: MEGAPOT_TESTNET.jackpot, abi: jackpotAbi, functionName: 'ticketPrice' });
-  const credits = useReadContract({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'credits', args: address ? [address] : undefined, query: { enabled: Boolean(address && isContractConfigured(rewardVaultAddress)) } });
-  const { writeContract, data: hash, isPending } = useWriteContract();
-  const receipt = useWaitForTransactionReceipt({ hash });
-  const creditCount = Number(credits.data ?? 0n);
-  const progress = Math.min(100, creditCount / 10);
+  const treasury = useTreasuryAccount();
+  const megapot = useMegapotCredits(treasury);
+  const [justClaimed, setJustClaimed] = useState(false);
+  const progress = Math.min(100, megapot.credits / 10);
+
+  async function handleClaim() {
+    setJustClaimed(false);
+    const result = await megapot.claim();
+    if (result) setJustClaimed(true);
+  }
 
   return (
     <main className="min-h-screen bg-[#080812] px-5 py-16 text-white">
@@ -74,7 +81,7 @@ export default function JackpotPage() {
             <div className="border-b border-dashed border-white/15 p-7">
               <p className="text-xs font-black uppercase tracking-[.2em] text-white/40">Your ticket meter</p>
               <p className="mt-4 text-5xl font-black">
-                {creditCount} <span className="text-lg text-white/35">/ 1000 credits</span>
+                {megapot.credits} <span className="text-lg text-white/35">/ 1000 credits</span>
               </p>
               <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full bg-gradient-to-r from-fuchsia-500 to-amber-400 transition-all" style={{ width: `${progress}%` }} />
@@ -94,15 +101,16 @@ export default function JackpotPage() {
               <div className="mt-6">
                 {!isConnected ? <ConnectWalletButton /> : (
                   <button
-                    disabled={!isContractConfigured(rewardVaultAddress) || creditCount < 1000 || isPending || receipt.isLoading}
-                    onClick={() => writeContract({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'claimTicket' })}
+                    disabled={!megapot.vaultConfigured || !megapot.canClaim || megapot.claimPending || megapot.claimReceiptLoading}
+                    onClick={handleClaim}
                     className="w-full rounded-xl bg-fuchsia-500 px-5 py-3 font-black transition hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {isPending || receipt.isLoading ? 'Minting ticket…' : 'Claim Megapot ticket'}
+                    {megapot.claimPending || megapot.claimReceiptLoading ? 'Minting ticket…' : 'Claim Megapot ticket'}
                   </button>
                 )}
               </div>
-              {receipt.isSuccess && <p className="mt-3 text-sm text-emerald-300">Ticket minted to your wallet.</p>}
+              {(megapot.claimReceiptSuccess || justClaimed) && <p className="mt-3 text-sm text-emerald-300">Ticket minted to your wallet.</p>}
+              {megapot.claimError && <p className="mt-3 text-sm text-red-300">{megapot.claimError}</p>}
             </div>
           </aside>
         </div>
