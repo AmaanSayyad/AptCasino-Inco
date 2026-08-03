@@ -11,8 +11,10 @@ import { GiCrystalGrowth } from 'react-icons/gi';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { minesMultiplier } from '@/lib/inco/payoutMath';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
+import BalanceChip from '@/components/treasury/BalanceChip';
 import MinesHowToModal from './MinesHowToModal';
 import WinConfetti from './WinConfetti';
+import AIAutoBetting from './AIAutoBetting';
 
 const GRID_SIZE = 5;
 const TOTAL_TILES = GRID_SIZE * GRID_SIZE;
@@ -125,7 +127,11 @@ export default function MinesBoard() {
       return;
     }
     playSound('bet');
-    hook.play([tiles, mineCount]);
+    if (hook.mode === 'treasury') {
+      const wagerRaw = Math.round(Number(hook.wager) * 1_000_000);
+      return hook.playTreasury({ selectedTiles: tiles, mineCount, wagerRaw });
+    }
+    return hook.play([tiles, mineCount]);
   }
 
   function getCellVisual(index) {
@@ -145,6 +151,13 @@ export default function MinesBoard() {
       {showConfetti && <WinConfetti />}
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} closeOnClick pauseOnHover theme="dark" />
       <MinesHowToModal open={showInfo} onClose={() => setShowInfo(false)} totalTiles={TOTAL_TILES} />
+
+      <div className="mb-3 flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+        <BalanceChip treasury={hook.treasury} />
+        <button type="button" onClick={() => hook.setMode(hook.mode === 'treasury' ? 'wallet' : 'treasury')} className="text-[11px] font-semibold text-white/45 underline decoration-dotted hover:text-white/70">
+          {hook.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
+        </button>
+      </div>
 
       <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-3">
@@ -214,6 +227,8 @@ export default function MinesBoard() {
           <span className="text-xs text-white/45">USDC</span>
         </div>
       </div>
+
+      <AIAutoBetting hook={hook} tiles={tiles} mineCount={mineCount} disabled={tiles.length === 0} />
 
       <div className="mt-2 w-full">
         <h3 className="mb-2 flex items-center justify-between text-sm font-medium text-white/90">

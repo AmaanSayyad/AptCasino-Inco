@@ -10,6 +10,7 @@ import { FaChartLine, FaCoins, FaTrophy, FaPercentage, FaBalanceScale } from 're
 import { GiWheelbarrow, GiSpinningBlades } from 'react-icons/gi';
 import { HiOutlineChartBar } from 'react-icons/hi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
+import BalanceChip from '@/components/treasury/BalanceChip';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
@@ -100,9 +101,17 @@ export default function WheelPage() {
     });
   }
 
+  async function placeBet() {
+    if (game.mode === 'treasury') {
+      const wagerRaw = Math.round(Number(game.wager) * 1_000_000);
+      return game.playTreasury({ risk: RISK_INDEX[risk], segments: noOfSegments, wagerRaw });
+    }
+    return game.play([RISK_INDEX[risk], noOfSegments]);
+  }
+
   async function manulBet() {
     if (!isConnected || !address) return;
-    const response = await game.play([RISK_INDEX[risk], noOfSegments]);
+    const response = await placeBet();
     if (!response) return; // hook already recorded the error
     await spinToRealSegment(Number(response.outcome.segment));
   }
@@ -114,7 +123,7 @@ export default function WheelPage() {
     const baseWager = game.wager;
     for (let i = 0; i < totalRounds; i += 1) {
       const before = Number(game.wager);
-      const response = await game.play([RISK_INDEX[risk], noOfSegments]);
+      const response = await placeBet();
       if (!response) break;
       await spinToRealSegment(Number(response.outcome.segment));
       const payoutAmount = Number(formatUnits(response.outcome.payout, USDC_DECIMALS));
@@ -216,20 +225,32 @@ export default function WheelPage() {
                 <ConnectWalletButton />
               </div>
             ) : (
-              <BettingPanel
-                wager={game.wager}
-                setWager={game.setWager}
-                risk={risk}
-                setRisk={setRisk}
-                noOfSegments={noOfSegments}
-                setSegments={setSegments}
-                busy={game.busy || isSpinning}
-                onManualBet={manulBet}
-                onAutoBet={autoBet}
-                usdcBalance={balanceFormatted}
-              />
+              <>
+                <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <BalanceChip treasury={game.treasury} />
+                  <button
+                    type="button"
+                    onClick={() => game.setMode(game.mode === 'treasury' ? 'wallet' : 'treasury')}
+                    className="text-[11px] font-semibold text-white/45 underline decoration-dotted hover:text-white/70"
+                  >
+                    {game.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
+                  </button>
+                </div>
+                <BettingPanel
+                  wager={game.wager}
+                  setWager={game.setWager}
+                  risk={risk}
+                  setRisk={setRisk}
+                  noOfSegments={noOfSegments}
+                  setSegments={setSegments}
+                  busy={game.busy || isSpinning}
+                  onManualBet={manulBet}
+                  onAutoBet={autoBet}
+                  usdcBalance={balanceFormatted}
+                />
+              </>
             )}
-            {game.error && <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">{game.error}</p>}
+            {game.error &&<p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">{game.error}</p>}
             <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-4">
               <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
               <p className="mt-1 text-2xl font-black">{game.credits} <span className="text-sm text-white/50">/ 1000</span></p>

@@ -23,6 +23,9 @@ export const stageProgress = { idle: 0, approving: 14, betting: 32, revealing: 6
 export function useConfidentialGame(game) {
   const { address, isConnected } = useAccount();
   const [wager, setWager] = useState('1');
+  // House balance is the default, matching the original app — direct per-round
+  // wallet signing ('wallet' mode) stays available for players who prefer it.
+  const [mode, setMode] = useState('treasury');
   const [stage, setStage] = useState('idle');
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -146,7 +149,7 @@ export function useConfidentialGame(game) {
   const busy = ['approving', 'betting', 'revealing', 'settling'].includes(stage);
 
   return {
-    address, isConnected, wager, setWager, stage, error, result, outcome, payout, play, playBets, playTreasury, busy,
+    address, isConnected, wager, setWager, mode, setMode, stage, error, result, outcome, payout, play, playBets, playTreasury, busy,
     credits, vaultConfigured, claim, claimPending, claimReceiptLoading: claimReceipt.isLoading,
     rewardVaultAbi, rewardVaultAddress, settleHash: result?.settleHash,
     treasury,

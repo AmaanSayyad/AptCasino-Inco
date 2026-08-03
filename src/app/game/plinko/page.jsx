@@ -16,6 +16,7 @@ import { parseUnits } from 'viem';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { riskLabelToIndex } from '@/lib/plinko/plinkoBoard';
+import BalanceChip from '@/components/treasury/BalanceChip';
 
 function scrollToElement(id) {
   if (typeof window === 'undefined') return;
@@ -76,7 +77,9 @@ export default function Plinko() {
 
   async function onBet() {
     const wagerRaw = parseUnits(g.wager, USDC_DECIMALS);
-    const response = await g.play([riskLabelToIndex(riskLevel), rows]);
+    const response = g.mode === 'treasury'
+      ? await g.playTreasury({ risk: riskLabelToIndex(riskLevel), rows, wagerRaw: Number(wagerRaw) })
+      : await g.play([riskLabelToIndex(riskLevel), rows]);
     if (response?.outcome) {
       setRecentBets((prev) => [outcomeToBetSlot(response.outcome, wagerRaw), ...prev].slice(0, 5));
     }
@@ -89,6 +92,12 @@ export default function Plinko() {
       <div className="site-page-pad-x pb-8 sm:pb-12">
         <div className="flex flex-col xl:flex-row gap-4 sm:gap-8">
           <div className="w-full xl:w-1/4">
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
+              <BalanceChip treasury={g.treasury} />
+              <button type="button" onClick={() => g.setMode(g.mode === 'treasury' ? 'wallet' : 'treasury')} className="text-[11px] font-semibold text-white/45 underline decoration-dotted hover:text-white/70">
+                {g.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
+              </button>
+            </div>
             <GameControls
               wager={g.wager} setWager={g.setWager}
               riskLevel={riskLevel} setRiskLevel={setRiskLevel}

@@ -5,57 +5,78 @@ import { Box, Grid, Typography } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { useReadContract } from 'wagmi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
+import BalanceChip from '@/components/treasury/BalanceChip';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
-import { isRedNumber, ROULETTE_PAYOUT } from '@/lib/inco/payoutMath';
+import { isRedNumber } from '@/lib/inco/payoutMath';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { muiStyles } from './styles';
+import RouletteHistory from './components/RouletteHistory';
+import RouletteLeaderboard from './components/RouletteLeaderboard';
+import StrategyGuide from './components/StrategyGuide';
 
 const theme = createTheme(muiStyles.dark);
+const CHIP_VALUES = [0.5, 1, 5, 10];
 
 // Authentic roulette table layout, 3 columns x 12 rows, bottom-to-top like a real table.
 const ROWS = Array.from({ length: 12 }, (_, row) => [row * 3 + 3, row * 3 + 2, row * 3 + 1]).reverse();
 
-function NumberCell({ n, active, isWinner, onClick }) {
+function betKey(betType, selection) { return `${betType}:${selection}`; }
+
+function NumberCell({ n, chipAmount, isWinner, onClick }) {
   const bg = n === 0 ? 'game.green' : isRedNumber(n) ? 'game.red' : 'dark.bg';
   return (
     <Box
       onClick={() => onClick(n)}
       sx={{
-        cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: 44, fontWeight: 700, color: '#fff', bgcolor: bg,
-        border: () => `2px solid ${active ? '#fff' : 'rgba(255,255,255,0.08)'}`,
+        border: () => `2px solid ${chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
         boxShadow: isWinner ? '0 0 0 3px #ffd54a, 0 0 18px rgba(255,213,74,0.7)' : 'none',
         transition: 'box-shadow .3s ease, border-color .15s ease', borderRadius: 1,
       }}
     >
       {n}
+      {chipAmount ? <Chip amount={chipAmount} /> : null}
     </Box>
   );
 }
 
-function OutsideCell({ label, active, onClick, swatch }) {
+function OutsideCell({ label, chipAmount, onClick, swatch }) {
   return (
     <Box
       onClick={onClick}
       sx={{
-        cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
+        position: 'relative', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
         height: 48, borderRadius: 1, fontWeight: 700, color: '#fff', bgcolor: 'dark.card',
-        border: () => `2px solid ${active ? '#fff' : 'rgba(255,255,255,0.08)'}`,
+        border: () => `2px solid ${chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
       }}
     >
       {swatch && <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: swatch }} />}
       <Typography variant="body2" sx={{ fontWeight: 700 }}>{label}</Typography>
+      {chipAmount ? <Chip amount={chipAmount} /> : null}
+    </Box>
+  );
+}
+
+function Chip({ amount }) {
+  return (
+    <Box sx={{
+      position: 'absolute', top: -8, right: -8, minWidth: 22, height: 22, borderRadius: '50%', px: 0.5,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800,
+      bgcolor: '#ffd54a', color: '#1a1a1a', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+    }}>
+      {amount}
     </Box>
   );
 }
 
 export default function RoulettePage() {
   const hook = useConfidentialGame('roulette');
-  const [betType, setBetType] = useState(0);
-  const [selection, setSelection] = useState(7);
+  // Multi-chip betting: several simultaneous (betType, selection, amount) bets in one
+  // round, matching a real table — up to 10, the live contract's own limit.
+  const [bets, setBets] = useState([]);
+  const [chipValue, setChipValue] = useState(1);
   const [recentResults, setRecentResults] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
 
   const spinSoundRef = useRef(null);
   const winSoundRef = useRef(null);
@@ -67,17 +88,32 @@ export default function RoulettePage() {
     query: { enabled: Boolean(hook.address), refetchInterval: 15_000 },
   });
 
-  function pickStraight(n) {
-    setBetType(0); setSelection(n);
+  function placeChip(betType, selection) {
     chipSelectRef.current?.play?.().catch(() => {});
+    setBets((current) => {
+      const key = betKey(betType, selection);
+      const existing = current.find((b) => betKey(b.betType, b.selection) === key);
+      if (existing) {
+        return current.map((b) => (betKey(b.betType, b.selection) === key ? { ...b, amount: b.amount + chipValue } : b));
+      }
+      if (current.length >= 10) return current; // contract caps at 10 bets/round
+      return [...current, { betType, selection, amount: chipValue }];
+    });
   }
-  function pickOutside(type, sel) {
-    setBetType(type); setSelection(sel);
-    chipSelectRef.current?.play?.().catch(() => {});
+  function clearBets() { setBets([]); }
+  function chipFor(betType, selection) {
+    return bets.find((b) => b.betType === betType && b.selection === selection)?.amount ?? 0;
   }
-  function play() {
+
+  const totalWager = bets.reduce((sum, b) => sum + b.amount, 0);
+
+  async function play() {
+    if (bets.length === 0) return;
     spinSoundRef.current?.play?.().catch(() => {});
-    hook.play([betType, selection]);
+    const response = hook.mode === 'treasury'
+      ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection, wagerRaw: Math.round(b.amount * 1_000_000) })) })
+      : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection, amount: String(b.amount) })));
+    if (response) setBets([]);
   }
 
   useEffect(() => {
@@ -87,15 +123,6 @@ export default function RoulettePage() {
       if (Number(hook.outcome.payout) > 0) winSoundRef.current?.play?.().catch(() => {});
     }
   }, [hook.stage, hook.outcome]);
-
-  useEffect(() => {
-    if (!hook.address) return;
-    fetch(`/api/game-history?wallet=${hook.address}&game=roulette&limit=20`).then((r) => r.json()).then((j) => setHistory(j.history || [])).catch(() => {});
-  }, [hook.address, hook.stage]);
-
-  useEffect(() => {
-    fetch('/api/leaderboard?game=roulette&limit=10').then((r) => r.json()).then((j) => setLeaderboard(j.leaderboard || [])).catch(() => {});
-  }, [hook.stage]);
 
   const winningNumber = hook.stage === 'done' ? Number(hook.outcome?.winningNumber) : null;
 
@@ -108,9 +135,16 @@ export default function RoulettePage() {
 
         <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
           <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', mb: 0.5 }}>Confidential Roulette</Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary', mb: 3 }}>
-            Inco Lightning seals the winning number until your wager is locked on Base Sepolia.
+          <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2 }}>
+            Inco Lightning seals the winning number until your wagers are locked on Base Sepolia. Place multiple chips, then spin.
           </Typography>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+            <BalanceChip treasury={hook.treasury} />
+            <button type="button" onClick={() => hook.setMode(hook.mode === 'treasury' ? 'wallet' : 'treasury')} style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', textDecoration: 'underline dotted' }}>
+              {hook.mode === 'treasury' ? 'Play from wallet instead' : 'Play from house balance instead'}
+            </button>
+          </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', py: 1, mb: 3, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 2, gap: 1 }}>
             <Typography variant="body2" sx={{ mx: 1.5, whiteSpace: 'nowrap', color: '#fff', fontWeight: 700 }}>Recent:</Typography>
@@ -123,14 +157,24 @@ export default function RoulettePage() {
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip:</Typography>
+                {CHIP_VALUES.map((v) => (
+                  <Box key={v} onClick={() => setChipValue(v)} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: chipValue === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: chipValue === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
+                ))}
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Total: <b style={{ color: '#fff' }}>{totalWager.toFixed(2)} USDC</b></Typography>
+                {bets.length > 0 && <button type="button" onClick={clearBets} style={{ fontSize: 12, color: '#f87171' }}>Clear</button>}
+              </Box>
+
               <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: { xs: 1.5, md: 2 }, overflowX: 'auto' }}>
                 <Box sx={{ display: 'flex', gap: 0.5, minWidth: 560 }}>
-                  <NumberCell n={0} active={betType === 0 && selection === 0} isWinner={winningNumber === 0} onClick={pickStraight} />
+                  <NumberCell n={0} chipAmount={chipFor(0, 0)} isWinner={winningNumber === 0} onClick={(n) => placeChip(0, n)} />
                   <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(12, 1fr)', gap: 0.5 }}>
                     {ROWS.map((row, i) => (
                       <Box key={i} sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5 }}>
                         {row.map((n) => (
-                          <NumberCell key={n} n={n} active={betType === 0 && selection === n} isWinner={winningNumber === n} onClick={pickStraight} />
+                          <NumberCell key={n} n={n} chipAmount={chipFor(0, n)} isWinner={winningNumber === n} onClick={(num) => placeChip(0, num)} />
                         ))}
                       </Box>
                     ))}
@@ -139,30 +183,25 @@ export default function RoulettePage() {
 
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5, mt: 0.5 }}>
                   {[2, 1, 0].map((col) => (
-                    <OutsideCell key={col} label={`Column ${col + 1} (2:1)`} active={betType === 5 && selection === col} onClick={() => pickOutside(5, col)} />
+                    <OutsideCell key={col} label={`Column ${col + 1} (2:1)`} chipAmount={chipFor(5, col)} onClick={() => placeChip(5, col)} />
                   ))}
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5, mt: 0.5 }}>
                   {['1st 12', '2nd 12', '3rd 12'].map((label, i) => (
-                    <OutsideCell key={label} label={label} active={betType === 4 && selection === i} onClick={() => pickOutside(4, i)} />
+                    <OutsideCell key={label} label={label} chipAmount={chipFor(4, i)} onClick={() => placeChip(4, i)} />
                   ))}
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0.5, mt: 0.5 }}>
-                  <OutsideCell label="1–18" active={betType === 3 && selection === 0} onClick={() => pickOutside(3, 0)} />
-                  <OutsideCell label="Even" active={betType === 2 && selection === 0} onClick={() => pickOutside(2, 0)} />
-                  <OutsideCell label="Red" swatch="game.red" active={betType === 1 && selection === 0} onClick={() => pickOutside(1, 0)} />
-                  <OutsideCell label="Black" swatch="dark.bg" active={betType === 1 && selection === 1} onClick={() => pickOutside(1, 1)} />
-                  <OutsideCell label="Odd" active={betType === 2 && selection === 1} onClick={() => pickOutside(2, 1)} />
-                  <OutsideCell label="19–36" active={betType === 3 && selection === 1} onClick={() => pickOutside(3, 1)} />
+                  <OutsideCell label="1–18" chipAmount={chipFor(3, 0)} onClick={() => placeChip(3, 0)} />
+                  <OutsideCell label="Even" chipAmount={chipFor(2, 0)} onClick={() => placeChip(2, 0)} />
+                  <OutsideCell label="Red" swatch="game.red" chipAmount={chipFor(1, 0)} onClick={() => placeChip(1, 0)} />
+                  <OutsideCell label="Black" swatch="dark.bg" chipAmount={chipFor(1, 1)} onClick={() => placeChip(1, 1)} />
+                  <OutsideCell label="Odd" chipAmount={chipFor(2, 1)} onClick={() => placeChip(2, 1)} />
+                  <OutsideCell label="19–36" chipAmount={chipFor(3, 1)} onClick={() => placeChip(3, 1)} />
                 </Box>
               </Box>
 
-              <Box sx={{ mt: 3, bgcolor: 'dark.card', borderRadius: 2, p: 2.5 }}>
-                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>Strategy &amp; odds</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>Straight number: {ROULETTE_PAYOUT.straight.toFixed(2)}× payout, 1-in-37 chance.</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>Dozen / column: {ROULETTE_PAYOUT.dozenOrColumn.toFixed(2)}× payout, 12-in-37 chance.</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Red/black, odd/even, high/low: {ROULETTE_PAYOUT.evenMoney.toFixed(2)}× payout, 18-in-37 chance.</Typography>
-              </Box>
+              <StrategyGuide />
             </Grid>
 
             <Grid item xs={12} md={4}>
@@ -171,13 +210,11 @@ export default function RoulettePage() {
                 <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 2 }}>
                   {balance.data != null ? (Number(balance.data) / 10 ** USDC_DECIMALS).toFixed(2) : '—'} USDC
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>Wager (USDC)</Typography>
-                <input className="game-input" type="number" min="0.1" max="10" step="0.1" value={hook.wager} onChange={(e) => hook.setWager(e.target.value)} style={{ width: '100%', marginBottom: 16 }} />
                 {!hook.isConnected ? (
                   <ConnectWalletButton className="w-full" />
                 ) : (
-                  <button onClick={play} disabled={hook.busy} className="rounded-xl bg-white px-7 py-3 font-black text-black transition hover:bg-white/85 disabled:cursor-wait disabled:opacity-50 w-full">
-                    {hook.stage === 'idle' || hook.stage === 'done' || hook.stage === 'error' ? 'Spin' : stageCopy[hook.stage]}
+                  <button onClick={play} disabled={hook.busy || bets.length === 0} className="rounded-xl bg-white px-7 py-3 font-black text-black transition hover:bg-white/85 disabled:cursor-wait disabled:opacity-50 w-full">
+                    {hook.stage === 'idle' || hook.stage === 'done' || hook.stage === 'error' ? `Spin (${bets.length} bet${bets.length === 1 ? '' : 's'})` : stageCopy[hook.stage]}
                   </button>
                 )}
                 {hook.error && <Typography variant="body2" sx={{ color: '#f87171', mt: 2 }}>{hook.error}</Typography>}
@@ -202,29 +239,8 @@ export default function RoulettePage() {
                 </button>
               </Box>
 
-              <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>Your history</Typography>
-                {history.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>No rounds yet.</Typography>
-                ) : history.map((h) => (
-                  <Box key={h.id} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>{h.result}</Typography>
-                    <Typography variant="body2" sx={{ color: Number(h.payout_raw) > Number(h.bet_raw) ? '#14D854' : 'text.secondary' }}>{(Number(h.payout_raw) / 10 ** USDC_DECIMALS).toFixed(2)} USDC</Typography>
-                  </Box>
-                ))}
-              </Box>
-
-              <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5 }}>
-                <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>Leaderboard</Typography>
-                {leaderboard.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>No data yet.</Typography>
-                ) : leaderboard.slice(0, 5).map((row) => (
-                  <Box key={row.wallet} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>#{row.rank} {row.wallet.slice(0, 6)}…{row.wallet.slice(-4)}</Typography>
-                    <Typography variant="body2" sx={{ color: '#fff' }}>{(row.wagered / 10 ** USDC_DECIMALS).toFixed(2)} USDC</Typography>
-                  </Box>
-                ))}
-              </Box>
+              <RouletteHistory address={hook.address} stage={hook.stage} />
+              <RouletteLeaderboard stage={hook.stage} />
             </Grid>
           </Grid>
         </Box>
