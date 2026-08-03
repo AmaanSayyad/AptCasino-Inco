@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { GiRollingDices, GiCardRandom, GiPokerHand } from 'react-icons/gi';
-import { FaPercentage, FaBalanceScale, FaChartLine, FaCoins, FaBookOpen, FaCheckCircle } from 'react-icons/fa';
+import { FaPercentage, FaBalanceScale, FaChartLine, FaCoins, FaTrophy, FaBookOpen, FaCheckCircle } from 'react-icons/fa';
 import PlinkoGame, { outcomeToBetSlot } from './components/PlinkoGame';
 import GameControls from './components/GameControls';
 import GameHistory from './components/GameHistory';
@@ -25,6 +25,16 @@ function scrollToElement(id) {
 }
 
 function PlinkoHeader() {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/games/stats').then((r) => r.json()).then((j) => {
+      if (cancelled) return;
+      const row = (j.stats || []).find((s) => s.game === 'plinko');
+      setStats(row || { bets: 0, wagered: 0, paidOut: 0 });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   return (
     <div className="site-page-top site-page-pad-x relative mb-6 text-white md:mb-8">
       <div className="relative">
@@ -56,6 +66,23 @@ function PlinkoHeader() {
           </div>
           <div className="md:w-1/2">
             <div className="bg-gradient-to-br from-purple-900/20 to-fuchsia-800/5 rounded-xl p-4 border border-purple-800/20 shadow-lg shadow-purple-900/10">
+              <motion.div className="grid grid-cols-3 gap-2 mb-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.4 }}>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600/20 mb-1"><FaChartLine className="text-blue-400" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Total Bets</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats ? stats.bets : '…'}</div>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-600/20 mb-1"><FaCoins className="text-yellow-400" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Volume</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats ? `${stats.wagered.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC` : '…'}</div>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-600/20 mb-1"><FaTrophy className="text-yellow-500" /></div>
+                  <div className="text-xs text-white/50 font-sans text-center">Paid Out</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats ? `${stats.paidOut.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC` : '…'}</div>
+                </div>
+              </motion.div>
               <div className="flex flex-wrap justify-between gap-2">
                 <button onClick={() => scrollToElement('strategy')} className="flex items-center justify-center px-4 py-2 bg-gradient-to-r from-purple-800/40 to-fuchsia-900/20 rounded-lg text-white font-medium text-sm hover:from-purple-700/40 hover:to-fuchsia-800/20 transition-all duration-300"><GiCardRandom className="mr-2" />Strategy Guide</button>
                 <button onClick={() => scrollToElement('payouts')} className="flex items-center justify-center px-4 py-2 bg-gradient-to-r from-blue-800/40 to-blue-900/20 rounded-lg text-white font-medium text-sm hover:from-blue-700/40 hover:to-blue-800/20 transition-all duration-300"><FaCoins className="mr-2" />Payout Tables</button>

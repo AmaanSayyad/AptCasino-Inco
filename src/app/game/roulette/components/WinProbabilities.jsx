@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Button, Tooltip, Stack, Fade } from '@mui/material';
+import { Box, Typography, Paper, Button, Tooltip, Stack } from '@mui/material';
 import { FaChartPie, FaInfoCircle, FaThumbsUp, FaDice, FaQuestion, FaChevronRight } from 'react-icons/fa';
 import Grid from '@mui/material/Unstable_Grid2';
 import { ROULETTE_PAYOUT, rouletteCoveredPayout } from '@/lib/inco/payoutMath';
@@ -57,9 +57,8 @@ export default function WinProbabilities() {
       </Box>
 
       <Grid container spacing={1.5}>
-        {sortedData.map((item, index) => (
-          <Fade in key={item.type} style={{ transitionDelay: `${index * 50}ms` }}>
-            <Grid xs={12} sm={6} md={6}>
+        {sortedData.map((item) => (
+            <Grid xs={12} sm={6} md={6} key={item.type}>
               <Box sx={{
                 p: 2, borderRadius: 2, border: `1px solid ${item.color}40`, position: 'relative', height: '100%', overflow: 'hidden',
                 background: `linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(${parseInt(item.color.slice(1, 3), 16)}, ${parseInt(item.color.slice(3, 5), 16)}, ${parseInt(item.color.slice(5, 7), 16)}, 0.05) 100%)`,
@@ -102,7 +101,6 @@ export default function WinProbabilities() {
                 </Box>
               </Box>
             </Grid>
-          </Fade>
         ))}
       </Grid>
 

@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Box, Grid, Typography } from '@mui/material';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import Grid from '@mui/material/Unstable_Grid2';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { useReadContract } from 'wagmi';
+import ClearIcon from '@mui/icons-material/Clear';
+import UndoIcon from '@mui/icons-material/Undo';
 import { motion } from 'framer-motion';
 import { FaChartLine, FaCoins, FaTrophy, FaBalanceScale, FaPercentage, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
 import { GiRollingDices, GiPokerHand, GiCardRandom } from 'react-icons/gi';
@@ -12,7 +14,8 @@ import BalanceChip from '@/components/treasury/BalanceChip';
 import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { isRedNumber } from '@/lib/inco/payoutMath';
-import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
+import { basescanUrl } from '@/lib/baseSepolia';
+import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { muiStyles } from './styles';
 import RouletteHistory from './components/RouletteHistory';
 import RouletteLeaderboard from './components/RouletteLeaderboard';
@@ -23,20 +26,8 @@ import WinProbabilities from './components/WinProbabilities';
 import { RouletteInfoTriggers, RouletteInfoDialog } from './components/RouletteInfoPanel';
 
 const theme = createTheme(muiStyles.dark);
-const CHIP_VALUES = [0.5, 1, 5, 10];
-
-// Authentic roulette table layout, 3 columns x 12 rows, bottom-to-top like a real table.
-const ROWS = Array.from({ length: 12 }, (_, row) => [row * 3 + 3, row * 3 + 2, row * 3 + 1]).reverse();
-
-function betKey(betType, selection, numbers) {
-  return betType === 6 ? `6:${[...numbers].sort((a, b) => a - b).join(',')}` : `${betType}:${selection}`;
-}
-const COVERED_SHAPES = {
-  split: { label: 'Split', count: 2, payout: '18x' },
-  street: { label: 'Street', count: 3, payout: '12x' },
-  corner: { label: 'Corner', count: 4, payout: '9x' },
-  sixline: { label: 'Six-line', count: 6, payout: '6x' },
-};
+const QUICK_BETS = [0.5, 1, 5, 10, 25, 50];
+const RED_SET = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
 function scrollToId(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -149,153 +140,374 @@ function RouletteHeader() {
   );
 }
 
-function NumberCell({ n, chipAmount, isWinner, isPending, onClick }) {
-  const bg = n === 0 ? 'game.green' : isRedNumber(n) ? 'game.red' : 'dark.bg';
+// ---------------------------------------------------------------------------
+// Real casino-table grid: a straight cell plus thin split/corner edge zones,
+// exactly like a physical roulette felt. Which zone the player clicks decides
+// the bet shape (straight / split / street / corner) — there's no separate
+// "pick a shape" selector, matching how the original table worked.
+// ---------------------------------------------------------------------------
+function BetBox({ betValue = 0, betType = '', position = 'top-right', onClick }) {
+  const pos = {
+    'top-right': { top: '25%', left: '75%' },
+    'top-left': { top: '25%', left: '25%' },
+    'bottom-right': { top: '75%', left: '75%' },
+    'bottom-left': { top: '75%', left: '25%' },
+  }[position];
   return (
-    <Box
-      onClick={() => onClick(n)}
-      sx={{
-        position: 'relative', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 44, fontWeight: 700, color: '#fff', bgcolor: bg,
-        border: () => `2px solid ${isPending ? '#38bdf8' : chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
-        boxShadow: isWinner ? '0 0 0 3px #ffd54a, 0 0 18px rgba(255,213,74,0.7)' : isPending ? '0 0 12px rgba(56,189,248,0.6)' : 'none',
-        transition: 'box-shadow .3s ease, border-color .15s ease', borderRadius: 1,
-      }}
-    >
-      {n}
-      {chipAmount ? <Chip amount={chipAmount} /> : null}
+    <Tooltip title={<Typography>{betType}: {betValue}</Typography>} arrow placement="top">
+      <Box
+        onClick={onClick}
+        sx={{
+          position: 'absolute', ...pos, transform: 'translate(-50%, -50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5,
+          width: 26, height: 26, borderRadius: '50%', bgcolor: 'rgba(255,213,74,0.92)', border: '2px solid rgba(255,255,255,0.8)', boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+          '&:hover': { transform: 'translate(-50%, -50%) scale(1.1)' },
+        }}
+      >
+        <Typography sx={{ fontSize: 12, color: '#1a1a1a', fontWeight: 800 }}>{betValue}</Typography>
+      </Box>
+    </Tooltip>
+  );
+}
+
+// Real height comes from plain CSS aspect-ratio, not a JS width measurement —
+// simpler and immune to the ResizeObserver/flex-stretch race that a
+// measure-then-set-height approach (e.g. @visx/responsive's ParentSize) hits
+// inside a doubly-nested flex grid like this table.
+function GridInside({ insideNumber, topEdge, red, straightup, splitleft, splitbottom, corner, hasCorner, isWinner, placeBet }) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {topEdge && <Box sx={{ height: 10, bgcolor: 'dark.card' }} />}
+      <Box
+        sx={{
+          position: 'relative', display: 'flex', alignItems: 'stretch', width: '100%', aspectRatio: '1 / 1',
+          ...(red && { bgcolor: 'game.red' }),
+          ...(isWinner && { boxShadow: '0 0 15px 5px rgba(255,215,0,0.7)', zIndex: 3 }),
+          transition: 'all .2s ease',
+          '&:hover': { transform: 'scale(1.02)', boxShadow: '0 5px 15px rgba(0,0,0,0.3)', zIndex: 2 },
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', width: 10 }}>
+          <Box sx={{ position: 'relative', flex: 1, bgcolor: 'dark.card', cursor: 'pointer' }} onClick={() => placeBet('split-left', insideNumber)}>
+            {splitleft > 0 && <BetBox betValue={splitleft} betType="Split" position="top-right" onClick={() => placeBet('split-left', insideNumber)} />}
+          </Box>
+          {hasCorner && (
+            <Box sx={{ position: 'relative', height: 10, bgcolor: 'dark.card', cursor: 'pointer' }} onClick={() => placeBet('corner', insideNumber)}>
+              {corner > 0 && <BetBox betValue={corner} betType="Corner" position="bottom-right" onClick={() => placeBet('corner', insideNumber)} />}
+            </Box>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Box sx={{ position: 'relative', flex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }} onClick={() => placeBet('straight', insideNumber)}>
+            <Typography variant="h5" sx={{ position: 'relative', zIndex: 4, textShadow: '0 0 4px rgba(0,0,0,0.8)', fontWeight: 'bold', bgcolor: 'rgba(0,0,0,0.4)', px: 0.75, borderRadius: 1, transform: 'translateX(-10%)' }}>
+              {insideNumber}
+            </Typography>
+            {straightup > 0 && <BetBox betValue={straightup} betType="Straight up" position="top-right" onClick={() => placeBet('straight', insideNumber)} />}
+          </Box>
+          <Box sx={{ position: 'relative', flex: 1, bgcolor: 'dark.card', maxHeight: 10, minHeight: 10, cursor: 'pointer' }} onClick={() => placeBet('bottom', insideNumber)}>
+            {splitbottom > 0 && <BetBox betValue={splitbottom} betType="Split/Street" position="bottom-right" onClick={() => placeBet('bottom', insideNumber)} />}
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }
 
-function OutsideCell({ label, chipAmount, onClick, swatch }) {
+function GridZero({ amount, isWinner, placeBet }) {
+  return (
+    <Box
+      onClick={() => placeBet('zero')}
+      sx={{
+        position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', cursor: 'pointer',
+        clipPath: 'polygon(100% 0%, 100% 100%, 40% 100%, 0% 50%, 40% 0%)', bgcolor: 'game.green',
+        ...(isWinner && { boxShadow: '0 0 15px 5px rgba(255,215,0,0.7)', zIndex: 3 }),
+      }}
+    >
+      <Typography variant="h5">0</Typography>
+      {amount > 0 && <BetBox betValue={amount} betType="Straight up" onClick={() => placeBet('zero')} />}
+    </Box>
+  );
+}
+
+function GridColumnBet({ topCard, bottomCard, index, amount, placeBet }) {
+  return (
+    <Box
+      onClick={() => placeBet('column', index)}
+      sx={{
+        position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', bgcolor: 'dark.button',
+        borderTop: (t) => `${topCard ? 10 : 5}px solid ${t.palette.dark.card}`,
+        borderBottom: (t) => `${bottomCard ? 10 : 5}px solid ${t.palette.dark.card}`,
+        borderRight: (t) => `10px solid ${t.palette.dark.card}`,
+        borderLeft: (t) => `10px solid ${t.palette.dark.card}`,
+      }}
+    >
+      <Typography variant="h5">2 To 1</Typography>
+      {amount > 0 && <BetBox betValue={amount} betType={`2 To 1 (row ${index + 1})`} onClick={() => placeBet('column', index)} />}
+    </Box>
+  );
+}
+
+function GridOutsideBet({ rightCard, onClick, children }) {
   return (
     <Box
       onClick={onClick}
       sx={{
-        position: 'relative', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
-        height: 48, borderRadius: 1, fontWeight: 700, color: '#fff', bgcolor: 'dark.card',
-        border: () => `2px solid ${chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
+        position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', py: 2, cursor: 'pointer', bgcolor: 'dark.button',
+        borderBottom: (t) => `10px solid ${t.palette.dark.card}`,
+        borderLeft: (t) => `10px solid ${t.palette.dark.card}`,
+        ...(rightCard && { borderRight: (t) => `10px solid ${t.palette.dark.card}` }),
+        transition: 'all .3s ease',
+        '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 5px 15px rgba(0,0,0,0.3)' },
       }}
     >
-      {swatch && <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: swatch }} />}
-      <Typography variant="body2" sx={{ fontWeight: 700 }}>{label}</Typography>
-      {chipAmount ? <Chip amount={chipAmount} /> : null}
+      {children}
     </Box>
   );
 }
 
-function Chip({ amount }) {
+// Table layout: three "thirds" (1-12, 13-24, 25-36), each 4 columns wide x 3 rows
+// tall — top row holds the highest multiple of 3 in each group, bottom row (next
+// to zero) the lowest. This matches a real felt, not a simple vertical list.
+const firstThird = [
+  { val: 3, red: true }, { val: 6 }, { val: 9, red: true }, { val: 12 },
+  { val: 2 }, { val: 5, red: true }, { val: 8 }, { val: 11 },
+  { val: 1, red: true }, { val: 4 }, { val: 7, red: true }, { val: 10 },
+];
+const secondThird = [
+  { val: 15 }, { val: 18, red: true }, { val: 21, red: true }, { val: 24 },
+  { val: 14, red: true }, { val: 17 }, { val: 20 }, { val: 23, red: true },
+  { val: 13 }, { val: 16, red: true }, { val: 19, red: true }, { val: 22 },
+];
+const thirdThird = [
+  { val: 27, red: true }, { val: 30, red: true }, { val: 33 }, { val: 36, red: true },
+  { val: 26 }, { val: 29 }, { val: 32, red: true }, { val: 35 },
+  { val: 25, red: true }, { val: 28 }, { val: 31 }, { val: 34, red: true },
+];
+
+// Left-split partner for a number (the number 3 rows "up" in the same lane, or 0
+// for numbers 1-3). Bottom-edge partner is a street when the number sits on the
+// bottom row (next to zero), otherwise a split with the number one below it.
+// Corner numbers only exist to the left of the 2nd/3rd column in each row.
+const SPLIT_LEFT = { 1: [0, 1], 2: [0, 2], 3: [0, 3], 4: [1, 4], 7: [4, 7], 10: [7, 10], 13: [10, 13], 16: [13, 16], 19: [16, 19], 22: [19, 22], 25: [22, 25], 28: [25, 28], 31: [28, 31], 34: [31, 34], 5: [2, 5], 8: [5, 8], 11: [8, 11], 14: [11, 14], 17: [14, 17], 20: [17, 20], 23: [20, 23], 26: [23, 26], 29: [26, 29], 32: [29, 32], 35: [32, 35], 6: [3, 6], 9: [6, 9], 12: [9, 12], 15: [12, 15], 18: [15, 18], 21: [18, 21], 24: [21, 24], 27: [24, 27], 30: [27, 30], 33: [30, 33], 36: [33, 36] };
+const BOTTOM_ROW = new Set([1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34]);
+const BOTTOM_SPLIT = { 2: [1, 2], 3: [2, 3], 5: [4, 5], 6: [5, 6], 8: [7, 8], 9: [8, 9], 11: [10, 11], 12: [11, 12], 14: [13, 14], 15: [14, 15], 17: [16, 17], 18: [17, 18], 20: [19, 20], 21: [20, 21], 23: [22, 23], 24: [23, 24], 26: [25, 26], 27: [26, 27], 29: [28, 29], 30: [29, 30], 32: [31, 32], 33: [32, 33], 35: [34, 35], 36: [35, 36] };
+const CORNER = { 2: [0, 1, 2], 5: [1, 2, 4, 5], 8: [4, 5, 7, 8], 11: [7, 8, 10, 11], 14: [10, 11, 13, 14], 17: [13, 14, 16, 17], 20: [16, 17, 19, 20], 23: [19, 20, 22, 23], 26: [22, 23, 25, 26], 29: [25, 26, 28, 29], 32: [28, 29, 31, 32], 35: [31, 32, 34, 35], 3: [0, 2, 3], 6: [2, 3, 5, 6], 9: [5, 6, 8, 9], 12: [8, 9, 11, 12], 15: [11, 12, 14, 15], 18: [14, 15, 17, 18], 21: [17, 18, 20, 21], 24: [20, 21, 23, 24], 27: [23, 24, 26, 27], 30: [26, 27, 29, 30], 33: [29, 30, 32, 33], 36: [32, 33, 35, 36] };
+
+function betKey(shape) {
+  return shape.betType === 6 ? `6:${[...shape.numbers].sort((a, b) => a - b).join(',')}` : `${shape.betType}:${shape.selection ?? 0}`;
+}
+
+// Every distinct wager bucket the table can hold — red/black/odd/even/high-low as
+// scalars, dozens/columns as 3-slots, every number's straight/split/street/corner
+// folded into one `chips` map keyed by contract (betType, selection|numbers).
+const arrayReducer = (state, action) => {
+  switch (action.type) {
+    case 'reset': return new Array(state.length).fill(0);
+    case 'update': { const next = [...state]; next[action.ind] = action.val; return next; }
+    default: return state;
+  }
+};
+
+function BettingStats({ rounds }) {
+  const stats = useMemo(() => {
+    if (rounds.length === 0) return null;
+    const wins = rounds.filter((r) => r.payout > r.wager);
+    const totalWagered = rounds.reduce((s, r) => s + r.wager, 0);
+    const netProfit = rounds.reduce((s, r) => s + (r.payout - r.wager), 0);
+    const counts = new Map();
+    for (const r of rounds) counts.set(r.number, (counts.get(r.number) ?? 0) + 1);
+    const hotNumbers = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([number]) => number);
+    return { winRate: ((wins.length / rounds.length) * 100).toFixed(1), rounds: rounds.length, winCount: wins.length, netProfit, hotNumbers };
+  }, [rounds]);
+
+  if (!stats) return null;
   return (
-    <Box sx={{
-      position: 'absolute', top: -8, right: -8, minWidth: 22, height: 22, borderRadius: '50%', px: 0.5,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800,
-      bgcolor: '#ffd54a', color: '#1a1a1a', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-    }}>
-      {amount}
+    <Box sx={{ p: 1.5, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2, bgcolor: 'rgba(0,0,0,0.3)' }}>
+      <Typography variant="subtitle1" color="white" sx={{ mb: 1, fontWeight: 700 }}>Session Statistics</Typography>
+      <Grid container spacing={1}>
+        <Grid xs={6} md={4}>
+          <Typography variant="caption" color="text.secondary">Win Rate</Typography>
+          <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{stats.winRate}%</Typography>
+          <Typography variant="caption" color="text.secondary">{stats.winCount}/{stats.rounds} rounds</Typography>
+        </Grid>
+        <Grid xs={6} md={4}>
+          <Typography variant="caption" color="text.secondary">Rounds</Typography>
+          <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{stats.rounds}</Typography>
+        </Grid>
+        <Grid xs={6} md={4}>
+          <Typography variant="caption" color="text.secondary">P/L</Typography>
+          <Typography variant="h6" color={stats.netProfit >= 0 ? 'success.main' : 'error.main'} sx={{ lineHeight: 1.2 }}>
+            {stats.netProfit >= 0 ? '+' : ''}{stats.netProfit.toFixed(2)} USDC
+          </Typography>
+        </Grid>
+        <Grid xs={12}>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Hot Numbers</Typography>
+          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.5 }}>
+            {stats.hotNumbers.map((n) => (
+              <Box key={n} sx={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: n === 0 ? 'game.green' : RED_SET.has(n) ? 'game.red' : 'dark.bg', border: '1px solid rgba(255,255,255,0.2)' }}>
+                <Typography variant="caption" fontWeight="bold">{n}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Grid>
+      </Grid>
     </Box>
   );
 }
 
 export default function RoulettePage() {
   const hook = useConfidentialGame('roulette');
-  // Multi-chip betting: several simultaneous (betType, selection, amount) bets in one
-  // round, matching a real table — up to 10, the live contract's own limit.
-  const [bets, setBets] = useState([]);
-  const [chipValue, setChipValue] = useState(1);
+
+  const [bet, setBet] = useState(1);
+  const [inside, dispatchInside] = useReducer(arrayReducer, new Array(148).fill(0));
+  const [red, setRed] = useState(0);
+  const [black, setBlack] = useState(0);
+  const [odd, setOdd] = useState(0);
+  const [even, setEven] = useState(0);
+  const [over, setOver] = useState(0);
+  const [under, setUnder] = useState(0);
+  const [dozens, dispatchDozens] = useReducer(arrayReducer, [0, 0, 0]);
+  const [columns, dispatchColumns] = useReducer(arrayReducer, [0, 0, 0]);
+  const [history, setHistory] = useState([]); // events for undo
+  const [rounds, setRounds] = useState([]); // session stats
   const [recentResults, setRecentResults] = useState([]);
-  // Covered-numbers bets (split/street/corner/six-line): pick a shape, then click that
-  // many numbers to define it — real betType 6 on-chain, 36/count odds, not a UI toy.
-  const [betShape, setBetShape] = useState('straight');
-  const [pendingNumbers, setPendingNumbers] = useState([]);
   const [helpPanel, setHelpPanel] = useState(null);
+  const [roundDismissed, setRoundDismissed] = useState(true);
+  const [warning, setWarning] = useState('');
 
   const spinSoundRef = useRef(null);
   const winSoundRef = useRef(null);
   const chipSelectRef = useRef(null);
-  const chipPutRef = useRef(null);
+  const chipPlaceRef = useRef(null);
   const menuClickRef = useRef(null);
   const backgroundMusicRef = useRef(null);
   const ambientSoundsRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
-    for (const ref of [spinSoundRef, winSoundRef, chipSelectRef, chipPutRef, menuClickRef, backgroundMusicRef, ambientSoundsRef]) {
+    for (const ref of [spinSoundRef, winSoundRef, chipSelectRef, chipPlaceRef, menuClickRef, backgroundMusicRef, ambientSoundsRef]) {
       if (ref.current) ref.current.muted = isMuted;
     }
-    if (isMuted) {
-      backgroundMusicRef.current?.pause();
-      ambientSoundsRef.current?.pause();
-    } else {
-      backgroundMusicRef.current?.play().catch(() => {});
-      ambientSoundsRef.current?.play().catch(() => {});
-    }
+    if (isMuted) { backgroundMusicRef.current?.pause(); ambientSoundsRef.current?.pause(); }
+    else { backgroundMusicRef.current?.play().catch(() => {}); ambientSoundsRef.current?.play().catch(() => {}); }
   }, [isMuted]);
 
-  const balance = useReadContract({
-    address: usdcAddress, abi: usdcAbi, functionName: 'balanceOf',
-    args: hook.address ? [hook.address] : undefined,
-    query: { enabled: Boolean(hook.address), refetchInterval: 15_000 },
-  });
+  const playSound = useCallback((ref) => {
+    if (!ref?.current || ref.current.muted) return;
+    ref.current.currentTime = 0;
+    ref.current.play().catch(() => {});
+  }, []);
 
-  function placeChip(betType, selection, numbers = []) {
-    chipPutRef.current?.play?.().catch(() => {});
-    setBets((current) => {
-      const key = betKey(betType, selection, numbers);
-      const existing = current.find((b) => betKey(b.betType, b.selection, b.numbers ?? []) === key);
-      if (existing) {
-        return current.map((b) => (betKey(b.betType, b.selection, b.numbers ?? []) === key ? { ...b, amount: b.amount + chipValue } : b));
-      }
-      if (current.length >= 10) return current; // contract caps at 10 bets/round
-      return [...current, { betType, selection, numbers, amount: chipValue }];
-    });
-  }
-  function clearBets() { menuClickRef.current?.play?.().catch(() => {}); setBets([]); setPendingNumbers([]); }
-  function removeBet(betType, selection, numbers) {
-    const key = betKey(betType, selection, numbers);
-    setBets((current) => current.filter((b) => betKey(b.betType, b.selection, b.numbers ?? []) !== key));
-  }
-  function chipFor(betType, selection) {
-    return bets.find((b) => b.betType === betType && b.selection === selection)?.amount ?? 0;
-  }
-
-  function handleNumberClick(n) {
-    if (betShape === 'straight') {
-      placeChip(0, n);
+  // placeBet accumulates `bet` onto whichever bucket the player clicked, and
+  // records an undo entry — same accumulation model as a real table where chips
+  // stack until the round is spun or the stack is cleared.
+  const placeBet = useCallback((kind, target) => {
+    playSound(chipPlaceRef);
+    if (kind === 'zero') {
+      const old = inside[0];
+      dispatchInside({ type: 'update', ind: 0, val: old + bet });
+      setHistory((h) => [...h, { kind, target, old }]);
       return;
     }
-    chipSelectRef.current?.play?.().catch(() => {});
-    setPendingNumbers((current) => {
-      const required = COVERED_SHAPES[betShape].count;
-      const next = current.includes(n) ? current.filter((v) => v !== n) : [...current, n];
-      if (next.length >= required) {
-        placeChip(6, 0, next.slice(0, required));
-        return [];
-      }
-      return next;
-    });
-  }
-
-  const totalWager = bets.reduce((sum, b) => sum + b.amount, 0);
-
-  async function play() {
-    if (bets.length === 0) return;
-    spinSoundRef.current?.play?.().catch(() => {});
-    const response = hook.mode === 'treasury'
-      ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection, numbers: b.numbers ?? [], wagerRaw: Math.round(b.amount * 1_000_000) })) })
-      : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection, numbers: b.numbers ?? [], amount: String(b.amount) })));
-    if (response) setBets([]);
-  }
-
-  useEffect(() => {
-    if (hook.stage === 'done' && hook.outcome) {
-      const n = Number(hook.outcome.winningNumber);
-      setRecentResults((prev) => [n, ...prev].slice(0, 20));
-      if (Number(hook.outcome.payout) > 0) winSoundRef.current?.play?.().catch(() => {});
+    if (kind === 'straight' || kind === 'split-left' || kind === 'bottom' || kind === 'corner') {
+      const offset = kind === 'straight' ? 1 : kind === 'split-left' ? 2 : kind === 'bottom' ? 3 : 4;
+      if (kind === 'corner' && !CORNER[target]) return;
+      const ind = (target - 1) * 4 + offset;
+      const old = inside[ind];
+      dispatchInside({ type: 'update', ind, val: old + bet });
+      setHistory((h) => [...h, { kind, target, old, ind }]);
+      return;
     }
-  }, [hook.stage, hook.outcome]);
+    if (kind === 'column') {
+      const old = columns[target];
+      dispatchColumns({ type: 'update', ind: target, val: old + bet });
+      setHistory((h) => [...h, { kind, target, old }]);
+      return;
+    }
+    if (kind === 'dozen') {
+      const old = dozens[target];
+      dispatchDozens({ type: 'update', ind: target, val: old + bet });
+      setHistory((h) => [...h, { kind, target, old }]);
+      return;
+    }
+    const setter = { red: setRed, black: setBlack, odd: setOdd, even: setEven, over: setOver, under: setUnder }[kind];
+    if (!setter) return;
+    const old = { red, black, odd, even, over, under }[kind];
+    setter(old + bet);
+    setHistory((h) => [...h, { kind, old }]);
+  }, [bet, inside, columns, dozens, red, black, odd, even, over, under, playSound]);
 
-  const winningNumber = hook.stage === 'done' ? Number(hook.outcome?.winningNumber) : null;
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    playSound(menuClickRef);
+    const last = history[history.length - 1];
+    if (last.kind === 'zero' || last.kind === 'straight' || last.kind === 'split-left' || last.kind === 'bottom' || last.kind === 'corner') {
+      dispatchInside({ type: 'update', ind: last.ind ?? 0, val: last.old });
+    } else if (last.kind === 'column') dispatchColumns({ type: 'update', ind: last.target, val: last.old });
+    else if (last.kind === 'dozen') dispatchDozens({ type: 'update', ind: last.target, val: last.old });
+    else {
+      const setter = { red: setRed, black: setBlack, odd: setOdd, even: setEven, over: setOver, under: setUnder }[last.kind];
+      setter?.(last.old);
+    }
+    setHistory((h) => h.slice(0, -1));
+  }, [history, playSound]);
+
+  const clearBets = useCallback(() => {
+    playSound(menuClickRef);
+    setRed(0); setBlack(0); setOdd(0); setEven(0); setOver(0); setUnder(0);
+    dispatchDozens({ type: 'reset' }); dispatchColumns({ type: 'reset' }); dispatchInside({ type: 'reset' });
+    setHistory([]); setWarning('');
+  }, [playSound]);
+
+  const total = red + black + odd + even + over + under + dozens.reduce((s, v) => s + v, 0) + columns.reduce((s, v) => s + v, 0) + inside.reduce((s, v) => s + v, 0);
+
+  // Translate the table state into the real contract's (betType, selection, numbers)
+  // bets — this is the only place the felt layout ever touches chain logic.
+  const buildBets = useCallback(() => {
+    const bets = [];
+    if (red > 0) bets.push({ betType: 1, selection: 0, amount: red });
+    if (black > 0) bets.push({ betType: 1, selection: 1, amount: black });
+    if (even > 0) bets.push({ betType: 2, selection: 0, amount: even });
+    if (odd > 0) bets.push({ betType: 2, selection: 1, amount: odd });
+    if (under > 0) bets.push({ betType: 3, selection: 0, amount: under });
+    if (over > 0) bets.push({ betType: 3, selection: 1, amount: over });
+    dozens.forEach((amount, index) => { if (amount > 0) bets.push({ betType: 4, selection: index, amount }); });
+    // UI column index 0 sits at the top of the felt (numbers …,33,36 — contract
+    // selection 2); index 2 sits at the bottom next to zero (selection 0).
+    columns.forEach((amount, index) => { if (amount > 0) bets.push({ betType: 5, selection: 2 - index, amount }); });
+    inside.forEach((amount, index) => {
+      if (amount <= 0) return;
+      if (index === 0) { bets.push({ betType: 0, selection: 0, amount }); return; }
+      const position = ((index - 1) % 4) + 1;
+      const n = Math.floor((index - 1) / 4) + 1;
+      if (position === 1) bets.push({ betType: 0, selection: n, amount });
+      else if (position === 2) { const pair = SPLIT_LEFT[n]; if (pair) bets.push({ betType: 6, numbers: pair, amount }); }
+      else if (position === 3) {
+        if (BOTTOM_ROW.has(n)) bets.push({ betType: 6, numbers: [n, n + 1, n + 2], amount });
+        else { const pair = BOTTOM_SPLIT[n]; if (pair) bets.push({ betType: 6, numbers: pair, amount }); }
+      } else if (position === 4) { const quad = CORNER[n]; if (quad) bets.push({ betType: 6, numbers: quad, amount }); }
+    });
+    return bets;
+  }, [red, black, odd, even, over, under, dozens, columns, inside]);
+
+  async function lockBet() {
+    if (total <= 0 || hook.busy) return;
+    const bets = buildBets();
+    if (bets.length > 10) { setWarning('Too many distinct bets on the table (max 10) — remove some before spinning.'); return; }
+    setWarning('');
+    playSound(spinSoundRef);
+    setRoundDismissed(false);
+    const response = hook.mode === 'treasury'
+      ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection ?? 0, numbers: b.numbers ?? [], wagerRaw: Math.round(b.amount * 10 ** USDC_DECIMALS) })) })
+      : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection ?? 0, numbers: b.numbers ?? [], amount: String(b.amount) })));
+    if (!response) { setRoundDismissed(true); return; }
+    const winningNumber = Number(response.outcome.winningNumber);
+    const payout = Number(response.payout ?? 0);
+    setRecentResults((prev) => [winningNumber, ...prev].slice(0, 12));
+    setRounds((prev) => [...prev, { number: winningNumber, wager: total, payout }].slice(-50));
+    if (payout > 0) playSound(winSoundRef);
+  }
+
+  const winningNumber = hook.stage === 'done' && !roundDismissed ? Number(hook.outcome?.winningNumber) : null;
 
   return (
     <ThemeProvider theme={theme}>
@@ -303,168 +515,234 @@ export default function RoulettePage() {
         <audio ref={spinSoundRef} src="/sounds/ball-spin.mp3" preload="auto" />
         <audio ref={winSoundRef} src="/sounds/win-chips.mp3" preload="auto" />
         <audio ref={chipSelectRef} src="/sounds/chip-select.mp3" preload="auto" />
-        <audio ref={chipPutRef} src="/sounds/chip-put.mp3" preload="auto" />
+        <audio ref={chipPlaceRef} src="/sounds/chip-put.mp3" preload="auto" />
         <audio ref={menuClickRef} src="/sounds/menu.mp3" preload="auto" />
         <audio ref={backgroundMusicRef} src="/sounds/background-music.mp3" preload="auto" loop />
         <audio ref={ambientSoundsRef} src="/sounds/ambient-sounds.mp3" preload="auto" loop />
 
         <RouletteHeader />
 
-        <Box sx={{ maxWidth: { xs: '100%', md: 1680, lg: 1800 }, mx: 'auto', px: { xs: 2, md: 3 } }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <BalanceChip treasury={hook.treasury} />
-              <button
-                type="button"
-                aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}
-                onClick={() => setIsMuted((m) => !m)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: '#fff' }}
-              >
-                {isMuted ? <FaVolumeMute /> : <FaVolumeUp />}
-              </button>
-            </Box>
-          </Box>
-          <Box sx={{ mb: 2, maxWidth: 420 }}>
-            <PlayModeToggle mode={hook.mode} setMode={hook.setMode} />
+        <Box sx={{ position: 'fixed', top: 15, right: 15, zIndex: 100 }}>
+          <IconButton
+            onClick={() => setIsMuted((m) => !m)}
+            aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}
+            sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+          >
+            {isMuted ? <FaVolumeMute /> : <FaVolumeUp />}
+          </IconButton>
+        </Box>
+
+        <Box sx={{ width: '100%', maxWidth: { md: 1680, lg: 1800 }, mx: { md: 'auto' }, px: { xs: 1.5, md: 2, lg: 3 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
+            <BalanceChip treasury={hook.treasury} />
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', py: 1, mb: 3, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 2, gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', py: 0.75, mb: 2, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 2, gap: 1 }}>
             <Typography variant="body2" sx={{ mx: 1.5, whiteSpace: 'nowrap', color: '#fff', fontWeight: 700 }}>Recent:</Typography>
             {recentResults.length === 0 ? (
               <Typography variant="body2" sx={{ color: 'text.secondary', opacity: 0.8 }}>No spins yet</Typography>
             ) : recentResults.map((n, i) => (
-              <Box key={i} sx={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', flexShrink: 0, bgcolor: n === 0 ? 'game.green' : isRedNumber(n) ? 'game.red' : 'dark.bg', border: '1px solid rgba(255,255,255,0.2)' }}>{n}</Box>
+              <Box key={i} sx={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', flexShrink: 0, bgcolor: n === 0 ? 'game.green' : RED_SET.has(n) ? 'game.red' : 'dark.bg', border: '1px solid rgba(255,255,255,0.2)' }}>{n}</Box>
             ))}
           </Box>
 
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={8}>
+          {/* The felt — 14-column grid: zero, three number thirds, the 2-to-1 rail. */}
+          <Box sx={{ width: '100%', overflowX: 'auto', overflowY: 'visible', pb: 1 }}>
+            <Box sx={{ minWidth: { xs: 760, md: 980 } }}>
+              <Grid container columns={14} sx={{ mt: 1.5, '& .MuiTypography-h5': { fontSize: { xs: '1rem', md: '1.2rem' } } }}>
+                <Grid xs={1}>
+                  <GridZero amount={inside[0]} isWinner={winningNumber === 0} placeBet={placeBet} />
+                </Grid>
+                <Grid xs={4} container columns={12}>
+                  {firstThird.map((v, i) => (
+                    <Grid xs={3} key={`f-${v.val}`}>
+                      <GridInside
+                        insideNumber={v.val} red={v.red} topEdge={i < 4} placeBet={placeBet}
+                        straightup={inside[(v.val - 1) * 4 + 1]} splitleft={inside[(v.val - 1) * 4 + 2]}
+                        splitbottom={inside[(v.val - 1) * 4 + 3]} corner={inside[(v.val - 1) * 4 + 4]}
+                        hasCorner={Boolean(CORNER[v.val])} isWinner={winningNumber === v.val}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+                <Grid xs={4} container columns={12}>
+                  {secondThird.map((v, i) => (
+                    <Grid xs={3} key={`s-${v.val}`}>
+                      <GridInside
+                        insideNumber={v.val} red={v.red} topEdge={i < 4} placeBet={placeBet}
+                        straightup={inside[(v.val - 1) * 4 + 1]} splitleft={inside[(v.val - 1) * 4 + 2]}
+                        splitbottom={inside[(v.val - 1) * 4 + 3]} corner={inside[(v.val - 1) * 4 + 4]}
+                        hasCorner={Boolean(CORNER[v.val])} isWinner={winningNumber === v.val}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+                <Grid xs={4} container columns={12}>
+                  {thirdThird.map((v, i) => (
+                    <Grid xs={3} key={`t-${v.val}`}>
+                      <GridInside
+                        insideNumber={v.val} red={v.red} topEdge={i < 4} placeBet={placeBet}
+                        straightup={inside[(v.val - 1) * 4 + 1]} splitleft={inside[(v.val - 1) * 4 + 2]}
+                        splitbottom={inside[(v.val - 1) * 4 + 3]} corner={inside[(v.val - 1) * 4 + 4]}
+                        hasCorner={Boolean(CORNER[v.val])} isWinner={winningNumber === v.val}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+                <Grid xs={1} sx={{ display: 'flex', alignItems: 'stretch' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                    <GridColumnBet topCard index={0} amount={columns[0]} placeBet={placeBet} />
+                    <GridColumnBet index={1} amount={columns[1]} placeBet={placeBet} />
+                    <GridColumnBet bottomCard index={2} amount={columns[2]} placeBet={placeBet} />
+                  </Box>
+                </Grid>
+
+                <Grid xs={1} />
+                <Grid xs={4}>
+                  <GridOutsideBet onClick={() => placeBet('dozen', 0)}>
+                    <Typography variant="h5">1st 12</Typography>
+                    {dozens[0] > 0 && <BetBox betValue={dozens[0]} betType="1st 12" onClick={() => placeBet('dozen', 0)} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={4}>
+                  <GridOutsideBet onClick={() => placeBet('dozen', 1)}>
+                    <Typography variant="h5">2nd 12</Typography>
+                    {dozens[1] > 0 && <BetBox betValue={dozens[1]} betType="2nd 12" onClick={() => placeBet('dozen', 1)} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={4}>
+                  <GridOutsideBet rightCard onClick={() => placeBet('dozen', 2)}>
+                    <Typography variant="h5">3rd 12</Typography>
+                    {dozens[2] > 0 && <BetBox betValue={dozens[2]} betType="3rd 12" onClick={() => placeBet('dozen', 2)} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={1} sx={{ borderLeft: (t) => `10px solid ${t.palette.dark.card}` }} />
+
+                <Grid xs={1} />
+                <Grid xs={2}>
+                  <GridOutsideBet onClick={() => placeBet('under')}>
+                    <Typography variant="h5">1-18</Typography>
+                    {under > 0 && <BetBox betValue={under} betType="Under (1-18)" onClick={() => placeBet('under')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={2}>
+                  <GridOutsideBet onClick={() => placeBet('even')}>
+                    <Typography variant="h5">Even</Typography>
+                    {even > 0 && <BetBox betValue={even} betType="Even" onClick={() => placeBet('even')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={2}>
+                  <GridOutsideBet onClick={() => placeBet('red')}>
+                    <Box sx={{ width: 32, height: 32, bgcolor: 'game.red' }} />
+                    {red > 0 && <BetBox betValue={red} betType="Red" onClick={() => placeBet('red')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={2}>
+                  <GridOutsideBet onClick={() => placeBet('black')}>
+                    <Box sx={{ width: 32, height: 32, bgcolor: 'dark.bg' }} />
+                    {black > 0 && <BetBox betValue={black} betType="Black" onClick={() => placeBet('black')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={2}>
+                  <GridOutsideBet onClick={() => placeBet('odd')}>
+                    <Typography variant="h5">Odd</Typography>
+                    {odd > 0 && <BetBox betValue={odd} betType="Odd" onClick={() => placeBet('odd')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={2}>
+                  <GridOutsideBet rightCard onClick={() => placeBet('over')}>
+                    <Typography variant="h5">19-36</Typography>
+                    {over > 0 && <BetBox betValue={over} betType="Over (19-36)" onClick={() => placeBet('over')} />}
+                  </GridOutsideBet>
+                </Grid>
+                <Grid xs={1} sx={{ borderLeft: (t) => `10px solid ${t.palette.dark.card}` }} />
+              </Grid>
+            </Box>
+          </Box>
+
+          <Typography variant="caption" sx={{ display: { xs: 'block', md: 'none' }, textAlign: 'center', mt: 1, opacity: 0.55 }}>
+            Swipe left or right to view the full table
+          </Typography>
+
+          {/* Controls row — bet size, undo/clear, play mode, spin. */}
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'flex-start' }, gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: { md: 260 } }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip value</Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {QUICK_BETS.map((v) => (
+                  <Box key={v} onClick={() => { setBet(v); playSound(chipSelectRef); }} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: bet === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: bet === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
+                ))}
+              </Box>
+              <PlayModeToggle mode={hook.mode} setMode={hook.setMode} disabled={hook.busy} />
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <RouletteInfoTriggers activePanel={helpPanel} onOpen={setHelpPanel} />
               <RouletteInfoDialog panel={helpPanel} onClose={() => setHelpPanel(null)} onSwitchPanel={setHelpPanel} />
+              <Tooltip title={<Typography>Undo last bet</Typography>}>
+                <span><IconButton disabled={history.length === 0 || hook.busy} onClick={undo}><UndoIcon /></IconButton></span>
+              </Tooltip>
+              <Tooltip title={<Typography>Clear bets</Typography>}>
+                <span><IconButton disabled={hook.busy} onClick={clearBets}><ClearIcon /></IconButton></span>
+              </Tooltip>
+            </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, mt: 1.5, flexWrap: 'wrap' }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip:</Typography>
-                {CHIP_VALUES.map((v) => (
-                  <Box key={v} onClick={() => setChipValue(v)} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: chipValue === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: chipValue === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
-                ))}
-                <Box sx={{ flex: 1 }} />
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Total: <b style={{ color: '#fff' }}>{totalWager.toFixed(2)} USDC</b></Typography>
-                {bets.length > 0 && <button type="button" onClick={clearBets} style={{ fontSize: 12, color: '#f87171' }}>Clear</button>}
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Bet type:</Typography>
-                {[['straight', 'Straight (36x)'], ...Object.entries(COVERED_SHAPES).map(([key, s]) => [key, `${s.label} (${s.payout})`])].map(([key, label]) => (
-                  <Box key={key} onClick={() => { setBetShape(key); setPendingNumbers([]); }} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 12, bgcolor: betShape === key ? '#38bdf8' : 'rgba(255,255,255,0.06)', color: betShape === key ? '#0a1a1f' : '#fff' }}>{label}</Box>
-                ))}
-                {betShape !== 'straight' && (
-                  <Typography variant="body2" sx={{ color: '#38bdf8', fontSize: 12 }}>
-                    Click {COVERED_SHAPES[betShape].count} numbers ({pendingNumbers.length}/{COVERED_SHAPES[betShape].count} selected)
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', md: 'flex-end' }, gap: 0.5 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>Total on table: <b style={{ color: '#fff' }}>{total.toFixed(2)} USDC</b></Typography>
+              {!hook.isConnected ? (
+                <ConnectWalletButton className="w-full md:w-auto" />
+              ) : winningNumber !== null ? (
+                <Box sx={{ textAlign: { xs: 'center', md: 'right' } }}>
+                  <Typography variant="h5">
+                    Result: <span style={{ color: winningNumber === 0 ? '#14D854' : RED_SET.has(winningNumber) ? '#d82633' : '#fff' }}>{winningNumber}</span>
                   </Typography>
-                )}
-              </Box>
-
-              <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: { xs: 1.5, md: 2 }, overflowX: 'auto' }}>
-                <Box sx={{ display: 'flex', gap: 0.5, minWidth: 560 }}>
-                  <NumberCell n={0} chipAmount={chipFor(0, 0)} isWinner={winningNumber === 0} isPending={pendingNumbers.includes(0)} onClick={handleNumberClick} />
-                  <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(12, 1fr)', gap: 0.5 }}>
-                    {ROWS.map((row, i) => (
-                      <Box key={i} sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5 }}>
-                        {row.map((n) => (
-                          <NumberCell key={n} n={n} chipAmount={chipFor(0, n)} isWinner={winningNumber === n} isPending={pendingNumbers.includes(n)} onClick={handleNumberClick} />
-                        ))}
-                      </Box>
-                    ))}
-                  </Box>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>Payout: {hook.payout} USDC</Typography>
+                  {hook.settleHash && <a href={basescanUrl('tx', hook.settleHash)} target="_blank" rel="noreferrer" style={{ color: '#14D854', fontSize: 12 }}>View settlement on BaseScan ↗</a>}
+                  <button type="button" onClick={() => setRoundDismissed(true)} className="mt-2 block w-full rounded-xl bg-white px-6 py-2 font-black text-black hover:bg-white/85">Play again</button>
+                  <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>Your bets stay on the table</Typography>
                 </Box>
-
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5, mt: 0.5 }}>
-                  {[2, 1, 0].map((col) => (
-                    <OutsideCell key={col} label={`Column ${col + 1} (2:1)`} chipAmount={chipFor(5, col)} onClick={() => placeChip(5, col)} />
-                  ))}
-                </Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5, mt: 0.5 }}>
-                  {['1st 12', '2nd 12', '3rd 12'].map((label, i) => (
-                    <OutsideCell key={label} label={label} chipAmount={chipFor(4, i)} onClick={() => placeChip(4, i)} />
-                  ))}
-                </Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0.5, mt: 0.5 }}>
-                  <OutsideCell label="1–18" chipAmount={chipFor(3, 0)} onClick={() => placeChip(3, 0)} />
-                  <OutsideCell label="Even" chipAmount={chipFor(2, 0)} onClick={() => placeChip(2, 0)} />
-                  <OutsideCell label="Red" swatch="game.red" chipAmount={chipFor(1, 0)} onClick={() => placeChip(1, 0)} />
-                  <OutsideCell label="Black" swatch="dark.bg" chipAmount={chipFor(1, 1)} onClick={() => placeChip(1, 1)} />
-                  <OutsideCell label="Odd" chipAmount={chipFor(2, 1)} onClick={() => placeChip(2, 1)} />
-                  <OutsideCell label="19–36" chipAmount={chipFor(3, 1)} onClick={() => placeChip(3, 1)} />
-                </Box>
-
-                {bets.some((b) => b.betType === 6) && (
-                  <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                    {bets.filter((b) => b.betType === 6).map((b) => (
-                      <Box key={betKey(6, 0, b.numbers)} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, bgcolor: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: 999, px: 1.25, py: 0.5, fontSize: 12 }}>
-                        <Typography variant="body2" sx={{ fontSize: 12, color: '#38bdf8', fontWeight: 700 }}>{b.numbers.length === 2 ? 'Split' : b.numbers.length === 3 ? 'Street' : b.numbers.length === 4 ? 'Corner' : 'Six-line'}</Typography>
-                        <Typography variant="body2" sx={{ fontSize: 12, color: '#fff' }}>{b.numbers.join('-')}</Typography>
-                        <Typography variant="body2" sx={{ fontSize: 12, color: '#ffd54a', fontWeight: 700 }}>{b.amount}</Typography>
-                        <button type="button" onClick={() => removeBet(6, 0, b.numbers)} style={{ color: '#f87171', fontSize: 12, lineHeight: 1 }}>×</button>
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>Your USDC balance</Typography>
-                <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 2 }}>
-                  {balance.data != null ? (Number(balance.data) / 10 ** USDC_DECIMALS).toFixed(2) : '—'} USDC
-                </Typography>
-                {!hook.isConnected ? (
-                  <ConnectWalletButton className="w-full" />
-                ) : (
-                  <button onClick={play} disabled={hook.busy || bets.length === 0} className="rounded-xl bg-white px-7 py-3 font-black text-black transition hover:bg-white/85 disabled:cursor-wait disabled:opacity-50 w-full">
-                    {hook.stage === 'idle' || hook.stage === 'done' || hook.stage === 'error' ? `Spin (${bets.length} bet${bets.length === 1 ? '' : 's'})` : stageCopy[hook.stage]}
-                  </button>
-                )}
-                {hook.error && <Typography variant="body2" sx={{ color: '#f87171', mt: 2 }}>{hook.error}</Typography>}
-                {hook.outcome && (
-                  <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(20,216,84,0.1)', border: '1px solid rgba(20,216,84,0.3)' }}>
-                    <Typography variant="body2" sx={{ color: '#14D854', fontWeight: 700 }}>Winning number: {String(hook.outcome.winningNumber)}</Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>Payout: {hook.payout} USDC</Typography>
-                    <a href={`https://sepolia.basescan.org/tx/${hook.settleHash}`} target="_blank" rel="noreferrer" style={{ color: '#14D854', fontSize: 12 }}>View settlement on BaseScan ↗</a>
-                  </Box>
-                )}
-              </Box>
-
-              <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5, mb: 2 }}>
-                <Typography variant="body2" sx={{ color: '#f0abfc', fontWeight: 700, mb: 1 }}>Megapot progress</Typography>
-                <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800 }}>{hook.credits} <Typography component="span" sx={{ color: 'text.secondary', fontSize: 14 }}>/ 1000</Typography></Typography>
-                <button
-                  disabled={!hook.vaultConfigured || hook.credits < 1000 || hook.claimPending || hook.claimReceiptLoading}
-                  onClick={() => hook.claim({ address: hook.rewardVaultAddress, abi: hook.rewardVaultAbi, functionName: 'claimTicket' })}
-                  className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-3 text-sm font-black disabled:opacity-40"
-                >
-                  {hook.claimPending || hook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
+              ) : (
+                <button type="button" onClick={lockBet} disabled={total === 0 || hook.busy} className="rounded-xl bg-white px-7 py-3 font-black text-black transition hover:bg-white/85 disabled:cursor-wait disabled:opacity-50 w-full md:w-auto">
+                  {hook.busy ? stageCopy[hook.stage] : total > 0 ? `Place Bet (${total.toFixed(2)} USDC)` : 'Place Bet'}
                 </button>
-              </Box>
-            </Grid>
-          </Grid>
+              )}
+              {warning && <Typography variant="body2" sx={{ color: '#fbbf24' }}>{warning}</Typography>}
+              {hook.error && <Typography variant="body2" sx={{ color: '#f87171' }}>{hook.error}</Typography>}
+            </Box>
+
+            <Box sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+              <BettingStats rounds={rounds} />
+            </Box>
+          </Box>
+
+          <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5, mt: 3 }}>
+            <Typography variant="body2" sx={{ color: '#f0abfc', fontWeight: 700, mb: 1 }}>Megapot progress</Typography>
+            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800 }}>{hook.credits} <Typography component="span" sx={{ color: 'text.secondary', fontSize: 14 }}>/ 1000</Typography></Typography>
+            <button
+              disabled={!hook.vaultConfigured || hook.credits < 1000 || hook.claimPending || hook.claimReceiptLoading}
+              onClick={() => hook.claim({ address: hook.rewardVaultAddress, abi: hook.rewardVaultAbi, functionName: 'claimTicket' })}
+              className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-3 text-sm font-black disabled:opacity-40 md:w-auto"
+            >
+              {hook.claimPending || hook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
+            </button>
+          </Box>
 
           <Box sx={{ mt: { xs: 5, md: 6 } }}>
             <RouletteGameIntro />
           </Box>
 
           <Grid id="strategy" container spacing={3} sx={{ mt: { xs: 5, md: 6 } }}>
-            <Grid item xs={12} md={7}><StrategyGuide /></Grid>
-            <Grid item xs={12} md={5}><WinProbabilities /></Grid>
+            <Grid xs={12} md={7}><StrategyGuide /></Grid>
+            <Grid xs={12} md={5}><WinProbabilities /></Grid>
           </Grid>
 
           <Box id="payouts" sx={{ mt: { xs: 5, md: 6 } }}>
             <RoulettePayout />
           </Box>
 
-          <Grid id="history" container spacing={3} sx={{ mt: { xs: 5, md: 6 } }}>
-            <Grid item xs={12} md={7}><RouletteHistory address={hook.address} stage={hook.stage} /></Grid>
-            <Grid item xs={12} md={5}><RouletteLeaderboard stage={hook.stage} /></Grid>
+          <Grid id="history" container spacing={3} sx={{ mt: { xs: 5, md: 6 }, mb: { xs: 5, md: 6 } }}>
+            <Grid xs={12} md={7}><RouletteHistory address={hook.address} stage={hook.stage} /></Grid>
+            <Grid xs={12} md={5}><RouletteLeaderboard stage={hook.stage} /></Grid>
           </Grid>
         </Box>
       </Box>
