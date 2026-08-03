@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { parseUnits } from 'viem';
 import { startMinesSession, revealMinesTile, cashOutMines } from '@/lib/inco/gameEngine';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
+import { friendlyWalletError } from '@/lib/walletError';
 
 export const minesStageCopy = {
   idle: 'Ready', approving: 'Approving USDC', betting: 'Locking wager on Base',
@@ -62,7 +63,7 @@ export function useMinesSession({ treasury }) {
       setStage('playing');
     } catch (startError) {
       setStage('error');
-      setError(startError instanceof Error ? startError.message : 'Could not start the round.');
+      setError(friendlyWalletError(startError, 'Could not start the round.'));
     }
   }
 
@@ -85,7 +86,7 @@ export function useMinesSession({ treasury }) {
         else setRevealedTiles((tiles) => [...tiles, tile]);
       }
     } catch (revealError) {
-      setError(revealError instanceof Error ? revealError.message : 'Reveal failed.');
+      setError(friendlyWalletError(revealError, 'Reveal failed.'));
     }
   }
 
@@ -109,7 +110,7 @@ export function useMinesSession({ treasury }) {
         setMinePositions(res.minePositions);
       }
     } catch (cashOutError) {
-      setError(cashOutError instanceof Error ? cashOutError.message : 'Cash out failed.');
+      setError(friendlyWalletError(cashOutError, 'Cash out failed.'));
     }
   }
 

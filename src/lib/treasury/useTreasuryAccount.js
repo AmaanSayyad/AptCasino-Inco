@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useSignMessage, useWriteContract, usePublicClient } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
+import { friendlyWalletError } from '@/lib/walletError';
 
 const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_TREASURY_ADDRESS || '';
 const SESSION_KEY_PREFIX = 'aptcasino_treasury_session_';
@@ -82,7 +83,7 @@ export function useTreasuryAccount() {
       if (typeof res.balanceRaw === 'number') setBalanceRaw(res.balanceRaw);
       return res;
     } catch (depositError) {
-      setError(depositError instanceof Error ? depositError.message : 'Deposit failed');
+      setError(friendlyWalletError(depositError, 'Deposit failed.'));
       return null;
     } finally {
       setBusy(false);
@@ -103,7 +104,7 @@ export function useTreasuryAccount() {
       setBalanceRaw(res.balanceRaw);
       return res;
     } catch (withdrawError) {
-      setError(withdrawError instanceof Error ? withdrawError.message : 'Withdraw failed');
+      setError(friendlyWalletError(withdrawError, 'Withdraw failed.'));
       return null;
     } finally {
       setBusy(false);

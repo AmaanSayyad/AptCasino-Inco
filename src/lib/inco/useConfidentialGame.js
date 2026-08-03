@@ -8,6 +8,7 @@ import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
 import { useTreasuryAccount } from '@/lib/treasury/useTreasuryAccount';
+import { friendlyWalletError } from '@/lib/walletError';
 
 // Mines is a multi-step session (start/reveal/cashOut), not a single play->settle
 // round — see src/lib/inco/useMinesSession.js, which the mines page uses instead.
@@ -71,7 +72,7 @@ export function useConfidentialGame(game) {
       return response;
     } catch (playError) {
       setStage('error');
-      setError(playError instanceof Error ? playError.message : 'The round could not be completed.');
+      setError(friendlyWalletError(playError, 'The round could not be completed.'));
       return null;
     }
   }
@@ -109,7 +110,7 @@ export function useConfidentialGame(game) {
       return response;
     } catch (playError) {
       setStage('error');
-      setError(playError instanceof Error ? playError.message : 'The round could not be completed.');
+      setError(friendlyWalletError(playError, 'The round could not be completed.'));
       return null;
     }
   }
@@ -142,7 +143,7 @@ export function useConfidentialGame(game) {
       return normalized;
     } catch (playError) {
       setStage('error');
-      setError(playError instanceof Error ? playError.message : 'The round could not be completed.');
+      setError(friendlyWalletError(playError, 'The round could not be completed.'));
       return null;
     }
   }
