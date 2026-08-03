@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveTreasurySession } from '@/lib/treasury/session';
 import { revealMinesTileTreasury, treasuryAddress } from '@/lib/treasury/signer';
+import { awardMegapotCredits } from '@/lib/treasury/megapot';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,7 @@ export async function POST(request) {
 
   if (result.hitMine) {
     await db.from('treasury_mines_sessions').delete().eq('game_id', gameId);
+    await awardMegapotCredits(db, wallet, session.wager_raw, 0).catch((megapotError) => console.error('megapot credit award failed', megapotError));
     await db.from('game_play_events').insert({
       chain: 'base-sepolia', game: 'mines', wallet, bet_raw: session.wager_raw, payout_raw: 0, currency: 'USDC',
       result: 'Hit a mine', fairness_proof: { gameId, tile, engine: 'inco-lightning', mode: 'treasury' }, proof_reference: result.hash,

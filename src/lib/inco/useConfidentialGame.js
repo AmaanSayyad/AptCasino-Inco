@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { runConfidentialGame } from '@/lib/inco/gameEngine';
@@ -41,10 +41,48 @@ export function useConfidentialGame(game) {
     args: address ? [address] : undefined,
     query: { enabled: Boolean(address && vaultConfigured), refetchInterval: 15_000 },
   });
-  const { writeContract: claim, data: claimHash, isPending: claimPending } = useWriteContract();
+  const { writeContract: claimOnChain, data: claimHash, isPending: claimOnChainPending } = useWriteContract();
   const claimReceipt = useWaitForTransactionReceipt({ hash: claimHash });
   const credits = Number(creditsRead.data ?? 0n);
   const treasury = useTreasuryAccount();
+
+  // House-balance rounds settle with the treasury as msg.sender on-chain, so real Megapot
+  // credits pool under the treasury's own address there, not this wallet's — the backend
+  // mirrors the same accrual formula per real player in an off-chain ledger instead (see
+  // src/lib/treasury/megapot.js), redeemable via claimTicketFor. In 'wallet' mode the
+  // player IS msg.sender, so the on-chain credits()/claimTicket() above already work.
+  const [treasuryCredits, setTreasuryCredits] = useState(0);
+  const [treasuryClaimPending, setTreasuryClaimPending] = useState(false);
+  useEffect(() => {
+    if (mode !== 'treasury' || !address) return undefined;
+    let cancelled = false;
+    const poll = () => fetch(`/api/treasury/megapot/credits?wallet=${address}`)
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled) setTreasuryCredits(Number(data.credits ?? 0)); })
+      .catch(() => {});
+    poll();
+    const id = setInterval(poll, 15_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [mode, address]);
+
+  async function claimTreasuryTicket() {
+    if (!address) return null;
+    setTreasuryClaimPending(true);
+    try {
+      const active = await treasury.ensureSession();
+      const response = await fetch('/api/treasury/megapot/claim', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${active.token}` },
+      }).then((r) => r.json());
+      if (!response.ok) throw new Error(response.error || 'Claim failed.');
+      setTreasuryCredits((c) => Math.max(0, c - 1000));
+      return response;
+    } catch (claimError) {
+      setError(friendlyWalletError(claimError, 'Claim failed.'));
+      return null;
+    } finally {
+      setTreasuryClaimPending(false);
+    }
+  }
 
   async function play(betArgs) {
     if (!address) return null;
@@ -152,9 +190,14 @@ export function useConfidentialGame(game) {
   const payout = outcome?.payout != null ? formatUnits(outcome.payout, USDC_DECIMALS) : null;
   const busy = ['approving', 'betting', 'revealing', 'settling'].includes(stage);
 
+  const isTreasuryMode = mode === 'treasury';
   return {
     address, isConnected, wager, setWager, mode, setMode, stage, error, result, outcome, payout, play, playBets, playTreasury, busy,
-    credits, vaultConfigured, claim, claimPending, claimReceiptLoading: claimReceipt.isLoading,
+    credits: isTreasuryMode ? treasuryCredits : credits,
+    vaultConfigured,
+    claim: isTreasuryMode ? claimTreasuryTicket : claimOnChain,
+    claimPending: isTreasuryMode ? treasuryClaimPending : claimOnChainPending,
+    claimReceiptLoading: isTreasuryMode ? false : claimReceipt.isLoading,
     rewardVaultAbi, rewardVaultAddress, settleHash: result?.settleHash,
     treasury,
   };

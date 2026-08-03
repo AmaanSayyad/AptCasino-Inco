@@ -30,6 +30,9 @@ export const aptCasinoAbi = parseAbi([
 export const rewardVaultAbi = parseAbi([
   'function credits(address player) view returns (uint256)',
   'function CREDITS_PER_TICKET() view returns (uint256)',
+  'function operator() view returns (address)',
   'function claimTicket() returns (uint256 ticketId)',
+  'function claimTicketFor(address player) returns (uint256 ticketId)',
   'event TicketClaimed(address indexed player, uint256 indexed ticketId, uint256 price)',
+  'event OperatorUpdated(address indexed operator)',
 ]);

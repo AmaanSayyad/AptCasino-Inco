@@ -61,6 +61,34 @@
   }
 }
 
+/* Bet-amount / mine-count / deposit-withdraw fields across the game pages and the
+   house-balance modal. Was previously undefined — browser defaults rendered these as
+   white text on a white background (value bound correctly, just invisible). */
+.game-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.game-input:focus {
+  outline: none;
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.game-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.game-input option {
+  background: #150012;
+  color: #fff;
+}
+
 /* Landing hero */
 .site-hero {
   padding-bottom: 2.5rem;

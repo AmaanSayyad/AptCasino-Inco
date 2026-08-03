@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveTreasurySession } from '@/lib/treasury/session';
 import { cashOutMinesTreasury, treasuryAddress } from '@/lib/treasury/signer';
+import { awardMegapotCredits } from '@/lib/treasury/megapot';
 import { summarizeOutcome } from '@/lib/games/summarize';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,7 @@ export async function POST(request) {
   const payoutRaw = Number(result.payout);
   const { data: newBalance } = await db.rpc('treasury_credit', { p_wallet: wallet, p_amount: payoutRaw });
   await db.from('treasury_ledger').insert({ wallet, kind: 'payout', amount_raw: payoutRaw, game: 'mines' });
+  await awardMegapotCredits(db, wallet, session.wager_raw, payoutRaw).catch((megapotError) => console.error('megapot credit award failed', megapotError));
   await db.from('game_play_events').insert({
     chain: 'base-sepolia', game: 'mines', wallet, bet_raw: session.wager_raw, payout_raw: payoutRaw, currency: 'USDC',
     result: summarizeOutcome('mines', { hitMine: false }), fairness_proof: { gameId, engine: 'inco-lightning', mode: 'treasury' }, proof_reference: result.hash,

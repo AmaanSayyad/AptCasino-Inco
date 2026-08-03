@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const { Lightning } = require('@inco/lightning-js/lite');
 
 const CASINO = '0xa9B94c3F2Cf7110AA7425618362FCC2643316B25';
-const VAULT = '0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9';
+const VAULT = '0x492B94E48C5D3d05745A162796A1c70c1979bbeC';
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const RPC = 'https://base-sepolia.drpc.org';
 
@@ -228,11 +228,16 @@ for (const definition of definitions) {
 }
 rounds.push(await playMinesSession(wager, fee));
 
-const creditsBeforeClaim = await publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: 'credits', args: [account.address] });
-// The Megapot claim step needs 1000 accrued credits, which depends on wager size
-// vs. the deployed bankroll (see the wager comment above) — it's optional here
-// since it exercises MegapotRewardVault, not the AptCasino USDC wager path this
-// script primarily verifies. Skip gracefully rather than fail the whole run.
+let creditsBeforeClaim = await publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: 'credits', args: [account.address] });
+// Top up with extra low-risk rounds (deterministic 100 credits/round regardless of
+// win/loss, at a 1 USDC wager) until this wallet can actually afford a 1000-credit
+// claim — proves the direct-wallet Megapot path end-to-end rather than skipping it.
+const topUpWager = parseUnits('1', 6);
+while (creditsBeforeClaim < 1_000n) {
+  const topUp = await playRound(definitions[0], topUpWager, fee);
+  rounds.push({ ...topUp, note: 'megapot credit top-up round' });
+  creditsBeforeClaim = await publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: 'credits', args: [account.address] });
+}
 let ticket = null;
 let creditsAfterClaim = creditsBeforeClaim;
 if (creditsBeforeClaim >= 1_000n) {

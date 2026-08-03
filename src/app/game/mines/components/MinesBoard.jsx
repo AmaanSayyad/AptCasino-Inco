@@ -6,54 +6,35 @@ import { motion } from 'framer-motion';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { HiOutlineVolumeUp, HiOutlineVolumeOff, HiOutlineInformationCircle } from 'react-icons/hi';
-import { FaCoins, FaBomb } from 'react-icons/fa';
+import { FaCoins, FaRegGem } from 'react-icons/fa';
 import { GiCrystalGrowth } from 'react-icons/gi';
-import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
-import { useMinesSession, minesStageCopy } from '@/lib/inco/useMinesSession';
+import { minesStageCopy } from '@/lib/inco/useMinesSession';
 import { minesMultiplier } from '@/lib/inco/payoutMath';
-import ConnectWalletButton from '@/components/ConnectWalletButton';
-import BalanceChip from '@/components/treasury/BalanceChip';
-import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import MinesHowToModal from './MinesHowToModal';
 import WinConfetti from './WinConfetti';
-import AIAutoBetting from './AIAutoBetting';
 
 const GRID_SIZE = 5;
 const TOTAL_TILES = GRID_SIZE * GRID_SIZE;
 const MAX_MINES = 10; // UI cap for a reasonable multiplier ladder — AptCasino.sol allows up to 24.
 const MAX_PICKS = 10;
 
-const SOUNDS = {
-  click: '/sounds/click.mp3',
-  gem: '/sounds/gem.mp3',
-  explosion: '/sounds/explosion.mp3',
-  win: '/sounds/win.mp3',
-  bet: '/sounds/bet.mp3',
-};
+const SOUNDS = { click: '/sounds/click.mp3', gem: '/sounds/gem.mp3', explosion: '/sounds/explosion.mp3', win: '/sounds/win.mp3', bet: '/sounds/bet.mp3' };
 
-// Chance that the NEXT single pick is a mine, given `picks` already safely revealed
-// out of `mines` mines among 25 tiles.
+// Chance the NEXT single pick is a mine, given `picks` already safely revealed out of `mines` mines among 25 tiles.
 function nextPickMineChancePercent(mines, picks) {
   const remainingTiles = TOTAL_TILES - picks;
   if (remainingTiles <= 0) return 0;
   return Math.round((mines / remainingTiles) * 100);
 }
 
-export default function MinesBoard() {
-  const gameHook = useConfidentialGame('mines');
-  const session = useMinesSession({ treasury: gameHook.treasury });
-  // AIAutoBetting's loop reads state across several awaits — a plain destructured
-  // `session` would go stale mid-loop (closures don't see later renders). Refreshed
-  // every render, before anything else, so the ref is always current by the time an
-  // async continuation reads it.
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-  const [isMuted, setIsMuted] = useState(false);
+/** The right-column board — ported from the original's game.jsx (mute/info row, mines
+ * stepper, stat boxes, dotted/gem grid, inline cash-out, multiplier ladder). Bet-amount
+ * and round-start controls live in the sibling MinesForm (left column) instead, matching
+ * the original's split. Session/gameHook are lifted to the page so both columns share
+ * one instance instead of each holding a separate copy. */
+export default function MinesBoard({ session, audioRefs, isMuted, setIsMuted, pendingTile, setPendingTile, bustedTile, setBustedTile }) {
   const [showInfo, setShowInfo] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [pendingTile, setPendingTile] = useState(null);
-  const [bustedTile, setBustedTile] = useState(null);
-  const audioRefs = { click: useRef(null), gem: useRef(null), explosion: useRef(null), win: useRef(null), bet: useRef(null) };
   const lastBustedRef = useRef(false);
   const lastPayoutRef = useRef(null);
 
@@ -63,7 +44,6 @@ export default function MinesBoard() {
   );
   const revealedSet = useMemo(() => new Set(session.revealedTiles), [session.revealedTiles]);
   const roundOver = session.busted || session.payout != null;
-  const busy = ['approving', 'betting', 'revealing', 'settling'].includes(session.stage);
   const multiplier = session.revealedTiles.length > 0 ? minesMultiplier(session.mineCount, session.revealedTiles.length) : 1;
   const chance = nextPickMineChancePercent(session.mineCount, session.revealedTiles.length);
 
@@ -93,7 +73,7 @@ export default function MinesBoard() {
       toast.error('Game over! You hit a mine.');
     }
     lastBustedRef.current = session.busted;
-  }, [session.busted]);
+  }, [session.busted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (session.payout != null && lastPayoutRef.current !== session.payout) {
@@ -103,16 +83,11 @@ export default function MinesBoard() {
       setTimeout(() => setShowConfetti(false), 4000);
     }
     lastPayoutRef.current = session.payout;
-  }, [session.payout]);
+  }, [session.payout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (session.stage === 'error' && session.error) toast.error(session.error);
   }, [session.stage, session.error]);
-
-  async function handleStart() {
-    playSound('bet');
-    await session.start();
-  }
 
   async function handleReveal(index) {
     if (!session.active || pendingTile != null || revealedSet.has(index)) return;
@@ -127,32 +102,46 @@ export default function MinesBoard() {
     }
   }
 
-  function handleNewRound() {
-    setBustedTile(null);
-    session.reset();
-  }
-
   function adjustMines(delta) {
     if (session.active) return;
     session.setMineCount((current) => Math.max(1, Math.min(MAX_MINES, current + delta)));
   }
 
-  function getCellVisual(index) {
+  const canReveal = session.active && !roundOver;
+
+  function getCellContent(index) {
     const isRevealedSafe = revealedSet.has(index);
     const isMine = minePositions?.has(index);
     const isPending = pendingTile === index;
-    if (isPending) return { className: 'border-white/20 bg-white/10 animate-pulse', content: null };
+    const clickable = canReveal && pendingTile == null && !revealedSet.has(index);
+
+    if (isPending) {
+      return { className: 'border-white/20 bg-white/10 animate-pulse', content: null, clickable: false };
+    }
     if (roundOver && isMine) {
       return {
         className: index === bustedTile ? 'border-red-500/80 bg-gradient-to-br from-red-800 to-red-950' : 'border-red-500/40 bg-gradient-to-br from-red-900/60 to-red-950/80',
-        content: <BombImage />,
+        content: <Image src="/images/bomb.png" alt="Mine" width={64} height={64} className="h-10 w-10 object-contain md:h-12 md:w-12" />,
+        clickable: false,
       };
     }
-    if (isRevealedSafe) return { className: 'border-cyan-500/40 bg-gradient-to-br from-cyan-900/40 to-blue-900/50', content: <GemImage /> };
-    return { className: 'border-white/10 bg-white/5 hover:bg-white/10', content: null };
+    if (isRevealedSafe) {
+      return {
+        className: 'border-cyan-500/40 bg-gradient-to-br from-cyan-900/40 to-blue-900/50',
+        content: <Image src="/images/diamond.png" alt="Gem" width={64} height={64} className="h-10 w-10 object-contain md:h-12 md:w-12" />,
+        clickable: false,
+      };
+    }
+    // Unrevealed: a pulsing dot while it's actually pickable, a dim gem glyph otherwise —
+    // matches the original's idle-vs-playable tile treatment.
+    return {
+      className: clickable ? 'border-purple-500/35 bg-gradient-to-br from-[#1a1028] to-[#12081c] hover:border-purple-400/60' : 'border-white/8 bg-gradient-to-br from-[#141018] to-[#0c080f]',
+      content: clickable
+        ? <div className="h-2 w-2 rounded-full bg-purple-400/50 shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
+        : <FaRegGem className="text-lg text-white/10 md:text-xl" aria-hidden />,
+      clickable,
+    };
   }
-
-  const canReveal = session.active && !roundOver;
 
   return (
     <div className="relative flex w-full flex-col items-center">
@@ -160,13 +149,6 @@ export default function MinesBoard() {
       {showConfetti && <WinConfetti />}
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} closeOnClick pauseOnHover theme="dark" />
       <MinesHowToModal open={showInfo} onClose={() => setShowInfo(false)} totalTiles={TOTAL_TILES} />
-
-      <div className="mb-2 flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2">
-        <BalanceChip treasury={gameHook.treasury} />
-      </div>
-      <div className="mb-3 max-w-md">
-        <PlayModeToggle mode={session.mode} setMode={session.setMode} disabled={session.active} />
-      </div>
 
       <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-3">
@@ -188,52 +170,40 @@ export default function MinesBoard() {
       </div>
 
       <div className="mb-3 grid w-full grid-cols-3 gap-2">
-        <Stat label="Next-pick mine chance" value={`${chance}%`} valueClassName={chance > 50 ? 'text-red-400' : 'text-white'} />
+        <Stat label="Chance of Mine" value={`${chance}%`} valueClassName={chance > 50 ? 'text-red-400' : 'text-white'} />
         <Stat label="Multiplier" value={`${multiplier.toFixed(2)}x`} valueClassName="text-yellow-400" />
         <Stat label="Safe picks" value={`${session.revealedTiles.length} / ${Math.min(MAX_PICKS, TOTAL_TILES - session.mineCount)}`} valueClassName="text-white" />
       </div>
 
       <div className="relative mx-auto mb-3 w-full max-w-md">
+        {['approving', 'betting', 'revealing', 'settling'].includes(session.stage) && (
+          <div className="mb-2 rounded-lg border border-purple-500/25 bg-purple-950/40 px-3 py-1.5 text-center text-xs text-purple-200">
+            {minesStageCopy[session.stage]}…
+          </div>
+        )}
         <div className="grid w-full gap-1.5" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}>
           {Array.from({ length: TOTAL_TILES }, (_, index) => {
-            const visual = getCellVisual(index);
-            const clickable = canReveal && pendingTile == null;
+            const cell = getCellContent(index);
             return (
               <motion.button
                 key={index}
                 type="button"
-                onClick={() => clickable && handleReveal(index)}
-                disabled={!clickable}
-                whileHover={{ scale: clickable ? 1.04 : 1 }}
-                whileTap={{ scale: clickable ? 0.96 : 1 }}
+                onClick={() => cell.clickable && handleReveal(index)}
+                disabled={!cell.clickable}
+                whileHover={{ scale: cell.clickable ? 1.04 : 1 }}
+                whileTap={{ scale: cell.clickable ? 0.96 : 1 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                className={`flex aspect-square items-center justify-center rounded-xl border shadow-md transition-colors duration-150 ${visual.className} ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+                className={`flex aspect-square items-center justify-center rounded-xl border shadow-md transition-colors duration-150 ${cell.className} ${cell.clickable ? 'cursor-pointer' : 'cursor-default'}`}
               >
-                {visual.content}
+                {cell.content}
               </motion.button>
             );
           })}
         </div>
       </div>
 
-      <div className="w-full space-y-2">
-        {!gameHook.isConnected ? (
-          <ConnectWalletButton className="w-full" />
-        ) : !session.active && !roundOver ? (
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 py-3 font-bold text-white shadow-lg transition-all hover:from-purple-700 hover:to-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FaCoins className="text-yellow-300" />
-            <span>{busy ? minesStageCopy[session.stage] : 'Start round'}</span>
-          </button>
-        ) : roundOver ? (
-          <button type="button" onClick={handleNewRound} className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-3 font-bold text-white hover:bg-white/20">
-            Play again
-          </button>
-        ) : (
+      {canReveal && (
+        <div className="w-full space-y-2">
           <button
             type="button"
             onClick={session.cashOut}
@@ -241,22 +211,19 @@ export default function MinesBoard() {
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 py-3 font-bold text-white shadow-lg transition-all hover:from-emerald-700 hover:to-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FaCoins className="text-yellow-300" />
-            <span>Cash out {multiplier.toFixed(2)}x</span>
+            <span>{session.revealedTiles.length === 0 ? 'Reveal a tile to cash out' : `Cash out ${multiplier.toFixed(2)}x`}</span>
           </button>
-        )}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-white/45">Wager</label>
-          <input className="game-input flex-1" type="number" min="0.1" max="10" step="0.1" value={session.wager} onChange={(e) => session.setWager(e.target.value)} disabled={session.active} />
-          <span className="text-xs text-white/45">USDC</span>
+          <p className="flex items-center justify-center gap-1 text-center text-xs text-white/40">Pick a tile, or cash out anytime once you&apos;ve revealed at least one safe tile.</p>
         </div>
-        {canReveal && (
-          <p className="text-center text-xs text-white/40 flex items-center justify-center gap-1"><FaBomb className="text-red-400/70" /> Pick a tile, or cash out anytime once you've revealed at least one safe tile.</p>
-        )}
-      </div>
+      )}
 
-      <AIAutoBetting sessionRef={sessionRef} mode={session.mode} mineCount={session.mineCount} disabled={false} />
+      {roundOver && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`w-full rounded-lg py-2.5 text-center font-bold ${session.payout != null ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+          {session.payout != null ? `Cashed out! +${(session.payout / 1_000_000).toFixed(4)} USDC` : 'Game Over! You hit a mine!'}
+        </motion.div>
+      )}
 
-      <div className="mt-2 w-full">
+      <div className="mt-4 w-full">
         <h3 className="mb-2 flex items-center justify-between text-sm font-medium text-white/90">
           <span className="flex items-center"><GiCrystalGrowth className="mr-2 text-blue-400" />Multiplier ladder</span>
           <span className="text-[10px] font-normal text-white/40">{session.mineCount} mines</span>
@@ -285,11 +252,4 @@ function Stat({ label, value, valueClassName }) {
       <div className={`text-lg font-bold ${valueClassName}`}>{value}</div>
     </div>
   );
-}
-
-function GemImage() {
-  return <Image src="/images/diamond.png" alt="Gem" width={64} height={64} className="h-10 w-10 object-contain md:h-12 md:w-12" />;
-}
-function BombImage() {
-  return <Image src="/images/bomb.png" alt="Mine" width={64} height={64} className="h-10 w-10 object-contain md:h-12 md:w-12" />;
 }

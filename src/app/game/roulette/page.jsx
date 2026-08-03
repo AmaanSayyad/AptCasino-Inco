@@ -532,7 +532,7 @@ export default function RoulettePage() {
           </IconButton>
         </Box>
 
-        <Box sx={{ width: '100%', maxWidth: { md: 1680, lg: 1800 }, mx: { md: 'auto' }, px: { xs: 1.5, md: 2, lg: 3 } }}>
+        <Box className="site-page-pad-x" sx={{ width: '100%', maxWidth: { md: 1680, lg: 1800 }, mx: { md: 'auto' } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
             <BalanceChip treasury={hook.treasury} />
           </Box>

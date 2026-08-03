@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaHistory, FaTrophy, FaChartLine, FaBomb } from 'react-icons/fa';
 import { GiMineExplosion, GiDiamonds, GiCrystalGrowth, GiCardRandom } from 'react-icons/gi';
 import { HiOutlineChartBar } from 'react-icons/hi';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
+import { useMinesSession } from '@/lib/inco/useMinesSession';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
+import MinesForm from './components/MinesForm';
 import MinesBoard from './components/MinesBoard';
 import MinesGameDetail from './components/MinesGameDetail';
 import MinesBettingTable from './components/MinesBettingTable';
@@ -127,6 +129,17 @@ function MinesHeader() {
 export default function Mines() {
   const [showTutorial, setShowTutorial] = useState(false);
   const gameHook = useConfidentialGame('mines');
+  const session = useMinesSession({ treasury: gameHook.treasury });
+  const [isMuted, setIsMuted] = useState(false);
+  const [pendingTile, setPendingTile] = useState(null);
+  const [bustedTile, setBustedTile] = useState(null);
+  const audioRefs = { click: useRef(null), gem: useRef(null), explosion: useRef(null), win: useRef(null), bet: useRef(null) };
+
+  // A fresh session.start() clears busted/revealed tiles on the hook side; clear the
+  // board's own busted-tile highlight (page-level UI state, not part of the session) too.
+  useEffect(() => {
+    if (session.active) setBustedTile(null);
+  }, [session.active]);
 
   return (
     <div className="site-game-page mines-bg custom-scrollbar bg-[#070005] bg-gradient-to-b from-[#070005] to-[#0e0512] text-white">
@@ -134,13 +147,34 @@ export default function Mines() {
         <MinesHeader />
 
         <div className="flex flex-col gap-4 site-page-pad-x lg:flex-row">
+          {/* Betting form */}
+          <div className="w-full lg:w-1/3 xl:w-1/4">
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
+              <MinesForm gameHook={gameHook} session={session} />
+            </motion.div>
+          </div>
+
+          {/* Game board */}
           <motion.div
-            className="w-full rounded-xl border-2 border-purple-700/30 bg-gradient-to-br from-[#290023]/80 to-[#150012]/90 p-6 shadow-xl shadow-purple-900/20 backdrop-blur-sm md:p-8"
+            className="relative w-full overflow-hidden rounded-xl border-2 border-purple-700/30 bg-gradient-to-br from-[#290023]/80 to-[#150012]/90 p-6 shadow-xl shadow-purple-900/20 backdrop-blur-sm md:p-8 lg:w-2/3 xl:w-3/4"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <MinesBoard />
+            <div className="absolute -z-10 top-0 right-0 h-80 w-80 rounded-full bg-purple-600/10 blur-3xl" />
+            <div className="absolute -z-10 bottom-0 left-0 h-80 w-80 rounded-full bg-blue-600/10 blur-3xl" />
+            <div className="relative z-10">
+              <MinesBoard
+                session={session}
+                audioRefs={audioRefs}
+                isMuted={isMuted}
+                setIsMuted={setIsMuted}
+                pendingTile={pendingTile}
+                setPendingTile={setPendingTile}
+                bustedTile={bustedTile}
+                setBustedTile={setBustedTile}
+              />
+            </div>
           </motion.div>
         </div>
 

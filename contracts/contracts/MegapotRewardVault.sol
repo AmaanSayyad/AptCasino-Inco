@@ -32,16 +32,26 @@ contract MegapotRewardVault is Ownable, ReentrancyGuard {
     IJackpot public immutable jackpot;
     IJackpotRandomTicketBuyer public immutable randomTicketBuyer;
     address public casino;
+    /// @dev The custodial treasury signer. AptCasino records `msg.sender` (the treasury,
+    ///      for house-balance rounds) as the credited player, so credits for those rounds
+    ///      pool under the treasury's own address rather than the real end user's. The
+    ///      operator claims tickets out of that pool on a real player's behalf — the
+    ///      backend is trusted to only do so once its own per-user ledger shows that
+    ///      player genuinely earned 1000 credits, the same trust already placed in it for
+    ///      the off-chain USDC balance ledger.
+    address public operator;
     bool public claimsPaused;
 
     mapping(address => uint256) public credits;
 
     event CasinoUpdated(address indexed casino);
+    event OperatorUpdated(address indexed operator);
     event CreditsAwarded(address indexed player, uint256 indexed gameId, uint8 kind, uint256 amount);
     event TicketClaimed(address indexed player, uint256 indexed ticketId, uint256 price);
     event ClaimsPaused(bool paused);
 
     error OnlyCasino();
+    error OnlyOperator();
     error ClaimsArePaused();
     error NotEnoughCredits();
     error VaultNeedsUsdc();
@@ -63,6 +73,11 @@ contract MegapotRewardVault is Ownable, ReentrancyGuard {
         emit ClaimsPaused(paused);
     }
 
+    function setOperator(address operator_) external onlyOwner {
+        operator = operator_;
+        emit OperatorUpdated(operator_);
+    }
+
     function award(address player, uint256 gameId, uint8 kind, uint256 amount) external {
         if (msg.sender != casino) revert OnlyCasino();
         credits[player] += amount;
@@ -70,23 +85,36 @@ contract MegapotRewardVault is Ownable, ReentrancyGuard {
     }
 
     function claimTicket() external nonReentrant returns (uint256 ticketId) {
+        return _claimTicket(msg.sender, msg.sender);
+    }
+
+    /// @notice Operator-only: spends 1000 credits out of the OPERATOR's own pooled
+    ///         balance (where custodial rounds' credits actually accrue) and sends the
+    ///         resulting ticket to `player` instead of the operator. The backend calls
+    ///         this only after its own ledger shows `player` earned the 1000 credits.
+    function claimTicketFor(address player) external nonReentrant returns (uint256 ticketId) {
+        if (msg.sender != operator) revert OnlyOperator();
+        return _claimTicket(msg.sender, player);
+    }
+
+    function _claimTicket(address from, address recipient) private returns (uint256 ticketId) {
         if (claimsPaused) revert ClaimsArePaused();
-        if (credits[msg.sender] < CREDITS_PER_TICKET) revert NotEnoughCredits();
+        if (credits[from] < CREDITS_PER_TICKET) revert NotEnoughCredits();
         uint256 price = jackpot.ticketPrice();
         if (usdc.balanceOf(address(this)) < price) revert VaultNeedsUsdc();
 
-        credits[msg.sender] -= CREDITS_PER_TICKET;
+        credits[from] -= CREDITS_PER_TICKET;
         address[] memory noReferrers = new address[](0);
         uint256[] memory noSplit = new uint256[](0);
         uint256[] memory ticketIds = randomTicketBuyer.buyTickets(
             1,
-            msg.sender,
+            recipient,
             noReferrers,
             noSplit,
             SOURCE
         );
         ticketId = ticketIds[0];
-        emit TicketClaimed(msg.sender, ticketId, price);
+        emit TicketClaimed(recipient, ticketId, price);
     }
 
     function withdrawUsdc(address to, uint256 amount) external onlyOwner {
