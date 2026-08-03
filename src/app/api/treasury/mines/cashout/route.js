@@ -37,5 +37,6 @@ export async function POST(request) {
     result: summarizeOutcome('mines', { hitMine: false }), fairness_proof: { gameId, engine: 'inco-lightning', mode: 'treasury' }, proof_reference: result.hash,
   });
 
-  return NextResponse.json({ ok: true, payoutRaw, balanceRaw: newBalance, hash: result.hash });
+  const minePositions = result.minePositions ? Array.from(result.minePositions, Number) : null;
+  return NextResponse.json({ ok: true, payoutRaw, balanceRaw: newBalance, hash: result.hash, minePositions });
 }

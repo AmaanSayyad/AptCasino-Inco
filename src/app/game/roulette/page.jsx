@@ -20,9 +20,17 @@ const CHIP_VALUES = [0.5, 1, 5, 10];
 // Authentic roulette table layout, 3 columns x 12 rows, bottom-to-top like a real table.
 const ROWS = Array.from({ length: 12 }, (_, row) => [row * 3 + 3, row * 3 + 2, row * 3 + 1]).reverse();
 
-function betKey(betType, selection) { return `${betType}:${selection}`; }
+function betKey(betType, selection, numbers) {
+  return betType === 6 ? `6:${[...numbers].sort((a, b) => a - b).join(',')}` : `${betType}:${selection}`;
+}
+const COVERED_SHAPES = {
+  split: { label: 'Split', count: 2, payout: '18x' },
+  street: { label: 'Street', count: 3, payout: '12x' },
+  corner: { label: 'Corner', count: 4, payout: '9x' },
+  sixline: { label: 'Six-line', count: 6, payout: '6x' },
+};
 
-function NumberCell({ n, chipAmount, isWinner, onClick }) {
+function NumberCell({ n, chipAmount, isWinner, isPending, onClick }) {
   const bg = n === 0 ? 'game.green' : isRedNumber(n) ? 'game.red' : 'dark.bg';
   return (
     <Box
@@ -30,8 +38,8 @@ function NumberCell({ n, chipAmount, isWinner, onClick }) {
       sx={{
         position: 'relative', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: 44, fontWeight: 700, color: '#fff', bgcolor: bg,
-        border: () => `2px solid ${chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
-        boxShadow: isWinner ? '0 0 0 3px #ffd54a, 0 0 18px rgba(255,213,74,0.7)' : 'none',
+        border: () => `2px solid ${isPending ? '#38bdf8' : chipAmount ? '#ffd54a' : 'rgba(255,255,255,0.08)'}`,
+        boxShadow: isWinner ? '0 0 0 3px #ffd54a, 0 0 18px rgba(255,213,74,0.7)' : isPending ? '0 0 12px rgba(56,189,248,0.6)' : 'none',
         transition: 'box-shadow .3s ease, border-color .15s ease', borderRadius: 1,
       }}
     >
@@ -77,6 +85,10 @@ export default function RoulettePage() {
   const [bets, setBets] = useState([]);
   const [chipValue, setChipValue] = useState(1);
   const [recentResults, setRecentResults] = useState([]);
+  // Covered-numbers bets (split/street/corner/six-line): pick a shape, then click that
+  // many numbers to define it — real betType 6 on-chain, 36/count odds, not a UI toy.
+  const [betShape, setBetShape] = useState('straight');
+  const [pendingNumbers, setPendingNumbers] = useState([]);
 
   const spinSoundRef = useRef(null);
   const winSoundRef = useRef(null);
@@ -88,21 +100,42 @@ export default function RoulettePage() {
     query: { enabled: Boolean(hook.address), refetchInterval: 15_000 },
   });
 
-  function placeChip(betType, selection) {
+  function placeChip(betType, selection, numbers = []) {
     chipSelectRef.current?.play?.().catch(() => {});
     setBets((current) => {
-      const key = betKey(betType, selection);
-      const existing = current.find((b) => betKey(b.betType, b.selection) === key);
+      const key = betKey(betType, selection, numbers);
+      const existing = current.find((b) => betKey(b.betType, b.selection, b.numbers ?? []) === key);
       if (existing) {
-        return current.map((b) => (betKey(b.betType, b.selection) === key ? { ...b, amount: b.amount + chipValue } : b));
+        return current.map((b) => (betKey(b.betType, b.selection, b.numbers ?? []) === key ? { ...b, amount: b.amount + chipValue } : b));
       }
       if (current.length >= 10) return current; // contract caps at 10 bets/round
-      return [...current, { betType, selection, amount: chipValue }];
+      return [...current, { betType, selection, numbers, amount: chipValue }];
     });
   }
-  function clearBets() { setBets([]); }
+  function clearBets() { setBets([]); setPendingNumbers([]); }
+  function removeBet(betType, selection, numbers) {
+    const key = betKey(betType, selection, numbers);
+    setBets((current) => current.filter((b) => betKey(b.betType, b.selection, b.numbers ?? []) !== key));
+  }
   function chipFor(betType, selection) {
     return bets.find((b) => b.betType === betType && b.selection === selection)?.amount ?? 0;
+  }
+
+  function handleNumberClick(n) {
+    if (betShape === 'straight') {
+      placeChip(0, n);
+      return;
+    }
+    chipSelectRef.current?.play?.().catch(() => {});
+    setPendingNumbers((current) => {
+      const required = COVERED_SHAPES[betShape].count;
+      const next = current.includes(n) ? current.filter((v) => v !== n) : [...current, n];
+      if (next.length >= required) {
+        placeChip(6, 0, next.slice(0, required));
+        return [];
+      }
+      return next;
+    });
   }
 
   const totalWager = bets.reduce((sum, b) => sum + b.amount, 0);
@@ -111,8 +144,8 @@ export default function RoulettePage() {
     if (bets.length === 0) return;
     spinSoundRef.current?.play?.().catch(() => {});
     const response = hook.mode === 'treasury'
-      ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection, wagerRaw: Math.round(b.amount * 1_000_000) })) })
-      : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection, amount: String(b.amount) })));
+      ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection, numbers: b.numbers ?? [], wagerRaw: Math.round(b.amount * 1_000_000) })) })
+      : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection, numbers: b.numbers ?? [], amount: String(b.amount) })));
     if (response) setBets([]);
   }
 
@@ -157,7 +190,7 @@ export default function RoulettePage() {
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>Chip:</Typography>
                 {CHIP_VALUES.map((v) => (
                   <Box key={v} onClick={() => setChipValue(v)} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 13, bgcolor: chipValue === v ? '#ffd54a' : 'rgba(255,255,255,0.06)', color: chipValue === v ? '#1a1a1a' : '#fff' }}>{v}</Box>
@@ -167,14 +200,26 @@ export default function RoulettePage() {
                 {bets.length > 0 && <button type="button" onClick={clearBets} style={{ fontSize: 12, color: '#f87171' }}>Clear</button>}
               </Box>
 
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>Bet type:</Typography>
+                {[['straight', 'Straight (36x)'], ...Object.entries(COVERED_SHAPES).map(([key, s]) => [key, `${s.label} (${s.payout})`])].map(([key, label]) => (
+                  <Box key={key} onClick={() => { setBetShape(key); setPendingNumbers([]); }} sx={{ cursor: 'pointer', px: 1.5, py: 0.5, borderRadius: 999, fontWeight: 700, fontSize: 12, bgcolor: betShape === key ? '#38bdf8' : 'rgba(255,255,255,0.06)', color: betShape === key ? '#0a1a1f' : '#fff' }}>{label}</Box>
+                ))}
+                {betShape !== 'straight' && (
+                  <Typography variant="body2" sx={{ color: '#38bdf8', fontSize: 12 }}>
+                    Click {COVERED_SHAPES[betShape].count} numbers ({pendingNumbers.length}/{COVERED_SHAPES[betShape].count} selected)
+                  </Typography>
+                )}
+              </Box>
+
               <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: { xs: 1.5, md: 2 }, overflowX: 'auto' }}>
                 <Box sx={{ display: 'flex', gap: 0.5, minWidth: 560 }}>
-                  <NumberCell n={0} chipAmount={chipFor(0, 0)} isWinner={winningNumber === 0} onClick={(n) => placeChip(0, n)} />
+                  <NumberCell n={0} chipAmount={chipFor(0, 0)} isWinner={winningNumber === 0} isPending={pendingNumbers.includes(0)} onClick={handleNumberClick} />
                   <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(12, 1fr)', gap: 0.5 }}>
                     {ROWS.map((row, i) => (
                       <Box key={i} sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5 }}>
                         {row.map((n) => (
-                          <NumberCell key={n} n={n} chipAmount={chipFor(0, n)} isWinner={winningNumber === n} onClick={(num) => placeChip(0, num)} />
+                          <NumberCell key={n} n={n} chipAmount={chipFor(0, n)} isWinner={winningNumber === n} isPending={pendingNumbers.includes(n)} onClick={handleNumberClick} />
                         ))}
                       </Box>
                     ))}
@@ -199,6 +244,19 @@ export default function RoulettePage() {
                   <OutsideCell label="Odd" chipAmount={chipFor(2, 1)} onClick={() => placeChip(2, 1)} />
                   <OutsideCell label="19–36" chipAmount={chipFor(3, 1)} onClick={() => placeChip(3, 1)} />
                 </Box>
+
+                {bets.some((b) => b.betType === 6) && (
+                  <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                    {bets.filter((b) => b.betType === 6).map((b) => (
+                      <Box key={betKey(6, 0, b.numbers)} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, bgcolor: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: 999, px: 1.25, py: 0.5, fontSize: 12 }}>
+                        <Typography variant="body2" sx={{ fontSize: 12, color: '#38bdf8', fontWeight: 700 }}>{b.numbers.length === 2 ? 'Split' : b.numbers.length === 3 ? 'Street' : b.numbers.length === 4 ? 'Corner' : 'Six-line'}</Typography>
+                        <Typography variant="body2" sx={{ fontSize: 12, color: '#fff' }}>{b.numbers.join('-')}</Typography>
+                        <Typography variant="body2" sx={{ fontSize: 12, color: '#ffd54a', fontWeight: 700 }}>{b.amount}</Typography>
+                        <button type="button" onClick={() => removeBet(6, 0, b.numbers)} style={{ color: '#f87171', fontSize: 12, lineHeight: 1 }}>×</button>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </Box>
 
               <StrategyGuide />

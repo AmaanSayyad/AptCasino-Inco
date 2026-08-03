@@ -101,6 +101,7 @@ export function useMinesSession({ treasury }) {
         }).then((r) => r.json());
         if (!res.ok) throw new Error(res.error || 'Cash out failed.');
         setPayout(res.payoutRaw);
+        setMinePositions(res.minePositions ?? null);
         treasury.refreshBalance();
       } else {
         const res = await cashOutMines({ account: address, gameId: BigInt(gameId) });
