@@ -28,6 +28,11 @@ export function getPinRadius(rows) {
   return Math.max(2, (24 - rows) / 2);
 }
 
+/** Ported from the original's plinkoConfig.ts — same feel across row counts. */
+export function getBallFrictions(rows) {
+  return { friction: 0.5, frictionAir: 0.0364 + (16 - rows) * 0.002 };
+}
+
 export function generatePins(rows) {
   const binCount = rows + 1;
   const pins = [];

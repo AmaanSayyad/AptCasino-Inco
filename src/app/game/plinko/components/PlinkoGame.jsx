@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Matter from 'matter-js';
 import {
   PLINKO_CANVAS_HEIGHT,
   PLINKO_CANVAS_WIDTH,
+  PLINKO_PADDING_TOP,
+  PLINKO_PADDING_BOTTOM,
   binCenterX,
+  getBallFrictions,
   getPinDistanceX,
   getPinRadius,
   plinkoLastPinRowY,
@@ -13,14 +17,26 @@ import {
 import { formatUnits } from 'viem';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 
+const PIN_CATEGORY = 0x0001;
+const BALL_CATEGORY = 0x0002;
+
 /**
  * Board rendering ported from the original PlinkoGame's canvas/SVG layout
  * (same geometry, multiplier-slot placement, bet-history sidebar, audio cues).
- * The original drove the ball with a real matter-js physics simulation whose
- * final bin was pre-selected client-side; that dependency isn't available
- * here (see report), so the ball animates on a simple deterministic path
- * instead — but critically, the landing bucket is ALWAYS the real on-chain
- * `outcome.bucket` from useConfidentialGame, never client-picked.
+ * The ball drop is now REAL matter-js physics (same engine/peg/wall setup the
+ * original used) — genuine bounce off every peg, no scripted path.
+ *
+ * Safety property: the payout always comes from the real on-chain
+ * `outcome.bucket`/multiplierBps (settled via Inco), never from wherever the
+ * ball visually lands. The original itself worked the same way structurally —
+ * it teleported the ball's X to the pre-chosen bin's center the instant it
+ * reached the bottom sensor (`Matter.Body.setPosition`), rather than trusting
+ * physics to land exactly in a bin. We reuse that exact snap-to-bin technique,
+ * just feeding it the real settled bucket instead of the original's rigged
+ * client-side pick (its own code comment: "~70% losing slots... not used for
+ * payout" — i.e. the original's own RNG wasn't even how it decided who won).
+ * The ball rests at the floor (real physics, not teleported away) until the
+ * real bucket is known, then snaps sideways into that exact slot.
  */
 export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, recentBets = [] }) {
   const board = useMemo(() => resolvePlinkoBoard(rowCount, riskLevel), [rowCount, riskLevel]);
@@ -30,8 +46,12 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
 
   const [ballY, setBallY] = useState(0);
   const [ballX, setBallX] = useState(PLINKO_CANVAS_WIDTH / 2);
+  const [ballVisible, setBallVisible] = useState(false);
   const [landedBin, setLandedBin] = useState(null);
+  const engineRef = useRef(null);
+  const ballRef = useRef(null);
   const rafRef = useRef(null);
+  const restingRef = useRef(false);
   const ballDropAudioRef = useRef(null);
   const binLandAudioRef = useRef(null);
 
@@ -46,34 +66,106 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
     }));
   }, [multipliers, pinsLastRowXCoords, pinDistanceX, rowCount, pinRadius]);
 
+  // (Re)build the physics world whenever the board geometry changes.
   useEffect(() => {
-    if (!busy) return undefined;
-    setLandedBin(null);
-    const startX = PLINKO_CANVAS_WIDTH / 2;
-    const start = performance.now();
-    const wobble = (Math.random() - 0.5) * pinDistanceX * 3;
-    const play = (ref) => { try { ref.current && (ref.current.currentTime = 0, ref.current.play().catch(() => {})); } catch {} };
-    play(ballDropAudioRef);
+    const { Engine, World, Bodies } = Matter;
+    if (engineRef.current) Engine.clear(engineRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    ballRef.current = null;
+    setBallVisible(false);
 
-    function frame(now) {
-      const t = Math.min(1, (now - start) / 1400);
-      setBallY(t * plinkoLastPinRowY(rowCount));
-      setBallX(startX + wobble * t + Math.sin(t * 18) * pinDistanceX * 0.35 * (1 - t));
-      if (t < 1 && stage !== 'done') rafRef.current = requestAnimationFrame(frame);
+    const engine = Engine.create({ gravity: { y: 1 } });
+    engineRef.current = engine;
+
+    const pegBodies = pins.map((pin) => Bodies.circle(pin.x, pin.y, pinRadius, {
+      isStatic: true,
+      restitution: 0.5,
+      collisionFilter: { category: PIN_CATEGORY, mask: BALL_CATEGORY },
+      render: { visible: false },
+    }));
+
+    const firstPinX = pins[0]?.x ?? PLINKO_CANVAS_WIDTH / 2;
+    const lastRowFirstPinX = pinsLastRowXCoords[0] ?? firstPinX;
+    const lastRowLastPinX = pinsLastRowXCoords[pinsLastRowXCoords.length - 1] ?? firstPinX;
+    const boardHeight = PLINKO_CANVAS_HEIGHT - PLINKO_PADDING_TOP - PLINKO_PADDING_BOTTOM;
+    const leftWallAngle = Math.atan2(firstPinX - lastRowFirstPinX, boardHeight);
+    const rightWallAngle = Math.atan2(lastRowLastPinX - firstPinX, boardHeight);
+    const leftWallX = lastRowFirstPinX - pinDistanceX * 0.5;
+    const rightWallX = lastRowLastPinX + pinDistanceX * 0.5;
+
+    const leftWall = Bodies.rectangle(leftWallX, PLINKO_CANVAS_HEIGHT / 2, 10, PLINKO_CANVAS_HEIGHT, {
+      isStatic: true, angle: leftWallAngle, render: { visible: false },
+    });
+    const rightWall = Bodies.rectangle(rightWallX, PLINKO_CANVAS_HEIGHT / 2, 10, PLINKO_CANVAS_HEIGHT, {
+      isStatic: true, angle: -rightWallAngle, render: { visible: false },
+    });
+    // A real floor (not just a sensor) so the ball actually rests at the bottom
+    // while we wait for the on-chain settlement, instead of falling through.
+    const floor = Bodies.rectangle(PLINKO_CANVAS_WIDTH / 2, plinkoLastPinRowY(rowCount) + pinRadius * 3, PLINKO_CANVAS_WIDTH * 2, 20, {
+      isStatic: true, render: { visible: false },
+    });
+
+    World.add(engine.world, [...pegBodies, leftWall, rightWall, floor]);
+
+    return () => { Engine.clear(engine); };
+  }, [pins, pinsLastRowXCoords, pinDistanceX, pinRadius, rowCount]);
+
+  // Drop a real ball whenever a new round starts.
+  useEffect(() => {
+    if (!busy || !engineRef.current) return undefined;
+    const { Bodies, World } = Matter;
+    setLandedBin(null);
+    restingRef.current = false;
+
+    const firstRowPins = pins.filter((pin) => pin.row === 0);
+    const firstRowCenterX = firstRowPins.length
+      ? (firstRowPins[0].x + firstRowPins[firstRowPins.length - 1].x) / 2
+      : PLINKO_CANVAS_WIDTH / 2;
+    const startX = firstRowCenterX + (Math.random() - 0.5) * pinDistanceX * 0.8;
+    const ballRadius = pinRadius * 2;
+    const { friction, frictionAir } = getBallFrictions(rowCount);
+
+    const ball = Bodies.circle(startX, 0, ballRadius, {
+      restitution: 0.8,
+      friction,
+      frictionAir,
+      collisionFilter: { category: BALL_CATEGORY, mask: PIN_CATEGORY },
+    });
+    ballRef.current = ball;
+    World.add(engineRef.current.world, ball);
+    setBallVisible(true);
+    try { ballDropAudioRef.current && (ballDropAudioRef.current.currentTime = 0, ballDropAudioRef.current.play().catch(() => {})); } catch {}
+
+    const floorY = plinkoLastPinRowY(rowCount);
+    function frame() {
+      if (!engineRef.current || !ballRef.current) return;
+      Matter.Engine.update(engineRef.current, 1000 / 60);
+      const { x, y } = ballRef.current.position;
+      setBallX(x);
+      setBallY(Math.min(y, floorY));
+      if (y >= floorY - ballRadius && !restingRef.current) {
+        restingRef.current = true; // physically resting; wait for the real bucket to snap into place
+      }
+      rafRef.current = requestAnimationFrame(frame);
     }
     rafRef.current = requestAnimationFrame(frame);
-    return () => rafRef.current && cancelAnimationFrame(rafRef.current);
-  }, [busy, rowCount, pinDistanceX, stage]);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [busy, rowCount, pinDistanceX, pinRadius, pins]);
 
+  // Once the real on-chain bucket is known, snap the ball into that exact slot —
+  // same technique the original used, just fed the real bucket instead of a rigged pick.
   useEffect(() => {
     if (stage !== 'done' || outcome?.bucket == null) return;
     const bucket = Number(outcome.bucket);
     const centerX = binCenterX(bucket, pinsLastRowXCoords);
+    if (ballRef.current) Matter.Body.setPosition(ballRef.current, { x: centerX, y: ballRef.current.position.y });
     setBallX(centerX);
     setBallY(plinkoLastPinRowY(rowCount));
     setLandedBin(bucket);
     try { binLandAudioRef.current && (binLandAudioRef.current.currentTime = 0, binLandAudioRef.current.play().catch(() => {})); } catch {}
   }, [stage, outcome, pinsLastRowXCoords, rowCount]);
+
+  useEffect(() => () => { if (engineRef.current) Matter.Engine.clear(engineRef.current); }, []);
 
   const recentBetSlots = useMemo(() => {
     const filled = recentBets.slice(0, 5);
@@ -105,7 +197,7 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
               {pins.map((pin) => (
                 <circle key={pin.id} cx={pin.x} cy={pin.y} r="6" fill="white" className="drop-shadow-sm" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }} />
               ))}
-              {busy && (
+              {ballVisible && (
                 <circle cx={ballX} cy={ballY} r={pinRadius * 2} fill="#ff6b6b" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 107, 107, 0.9))' }} />
               )}
             </svg>
