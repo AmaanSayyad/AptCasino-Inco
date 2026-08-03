@@ -17,24 +17,31 @@ import { baseSepolia } from 'viem/chains';
 const require = createRequire(import.meta.url);
 const { Lightning } = require('@inco/lightning-js/lite');
 
-const CASINO = '0xbd025968C8C1eDDEE5EdAE28479C295876EcEdC5';
-const VAULT = '0x20862fEfB10C4e036Cc6CCa82Cf90B3296378E26';
+const CASINO = '0xa9B94c3F2Cf7110AA7425618362FCC2643316B25';
+const VAULT = '0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9';
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const RPC = 'https://base-sepolia.drpc.org';
 
 const casinoAbi = parseAbi([
   'function getFee() view returns (uint256)',
-  'function playRoulette((uint8 betType, uint8 selection, uint256 wager)[] bets) payable returns (uint256 gameId)',
+  'function playRoulette((uint8 betType, uint8 selection, uint8[] numbers, uint256 wager)[] bets) payable returns (uint256 gameId)',
   'function playWheel(uint8 risk, uint8 segments, uint256 wager) payable returns (uint256 gameId)',
   'function playPlinko(uint8 risk, uint8 rows, uint256 wager) payable returns (uint256 gameId)',
-  'function playMines(uint8[] selectedTiles, uint8 mineCount, uint256 wager) payable returns (uint256 gameId)',
   'function settle(uint256 gameId, (bytes32 handle, bytes32 value) attestation, bytes[] signatures)',
+  'function startMines(uint8 mineCount, uint256 wager) payable returns (uint256 gameId)',
+  'function commitMines(uint256 gameId, (bytes32 handle, bytes32 value) attestation, bytes[] signatures)',
+  'function getMinesSession(uint256 gameId) view returns (address player, uint256 wager, uint8 mineCount, uint8 revealedCount, bool committed, bool active)',
+  'function revealTile(uint256 gameId, uint8 tile) returns (bool hitMine)',
+  'function cashOut(uint256 gameId) returns (uint256 payout)',
   'event BetPlaced(uint256 indexed gameId, address indexed player, uint256 wager, bytes32 seedHandle, uint8 kind)',
   'event BetSettled(uint256 indexed gameId, address indexed player, uint256 wager, uint256 payout, uint8 kind)',
   'event RouletteOutcome(uint256 indexed gameId, uint8 winningNumber, uint256 payout)',
   'event WheelOutcome(uint256 indexed gameId, uint8 segment, uint256 multiplierBps, uint256 payout)',
   'event PlinkoOutcome(uint256 indexed gameId, uint8 bucket, uint256 multiplierBps, uint256 payout)',
-  'event MinesOutcome(uint256 indexed gameId, bool hitMine, uint8[] minePositions, uint256 payout)',
+  'event MinesCommitted(uint256 indexed gameId)',
+  'event MinesTileRevealed(uint256 indexed gameId, uint8 tile, uint8 revealedCount)',
+  'event MinesBusted(uint256 indexed gameId, uint8 tile, uint8[] minePositions)',
+  'event MinesCashedOut(uint256 indexed gameId, uint256 payout, uint8 revealedCount, uint8[] minePositions)',
 ]);
 
 const usdcAbi = parseAbi([
@@ -154,22 +161,72 @@ async function playRound(definition, wager, fee) {
   };
 }
 
+async function playMinesSession(wager, fee) {
+  await ensureAllowance(wager);
+  const startRequest = await publicClient.simulateContract({ account, address: CASINO, abi: casinoAbi, functionName: 'startMines', args: [5, wager], value: fee, gas: 2_000_000n });
+  const startHash = await walletClient.writeContract(startRequest.request);
+  console.error(`[smoke] mines start: ${startHash}`);
+  const startReceipt = await publicClient.waitForTransactionReceipt({ hash: startHash });
+  const [placed] = parseEventLogs({ abi: casinoAbi, eventName: 'BetPlaced', logs: startReceipt.logs });
+  if (!placed) throw new Error('mines: BetPlaced missing');
+
+  const revealed = await reveal(placed.args.seedHandle);
+  const commitRequest = await publicClient.simulateContract({ account, address: CASINO, abi: casinoAbi, functionName: 'commitMines', args: [placed.args.gameId, revealed.attestation, revealed.signatures], gas: 3_000_000n });
+  const commitHash = await walletClient.writeContract(commitRequest.request);
+  console.error(`[smoke] mines commit: ${commitHash}`);
+  await publicClient.waitForTransactionReceipt({ hash: commitHash, confirmations: 2 });
+  // Public RPC nodes can lag a block behind the one that confirmed the receipt; poll until it's visible.
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const session = await publicClient.readContract({ address: CASINO, abi: casinoAbi, functionName: 'getMinesSession', args: [placed.args.gameId] });
+    if (session[4]) break; // committed
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+
+  // Reveal tiles one at a time (the whole point: incremental, stop-anytime) until
+  // we've safely revealed 3, or hit a mine.
+  let revealedSafe = 0;
+  let busted = false;
+  let lastReceipt;
+  for (let tile = 0; tile < 25 && revealedSafe < 3 && !busted; tile += 1) {
+    const revealRequest = await publicClient.simulateContract({ account, address: CASINO, abi: casinoAbi, functionName: 'revealTile', args: [placed.args.gameId, tile], gas: 500_000n });
+    const revealHash = await walletClient.writeContract(revealRequest.request);
+    lastReceipt = await publicClient.waitForTransactionReceipt({ hash: revealHash });
+    console.error(`[smoke] mines revealTile(${tile}): ${revealHash}`);
+    const [busted_] = parseEventLogs({ abi: casinoAbi, eventName: 'MinesBusted', logs: lastReceipt.logs });
+    if (busted_) { busted = true; console.error(`[smoke] mines busted on tile ${tile}, mines were:`, busted_.args.minePositions); break; }
+    revealedSafe += 1;
+  }
+
+  if (busted) return { game: 'mines', gameId: placed.args.gameId.toString(), busted: true, revealedSafe, payoutUsdc: '0' };
+
+  const cashOutRequest = await publicClient.simulateContract({ account, address: CASINO, abi: casinoAbi, functionName: 'cashOut', args: [placed.args.gameId], gas: 500_000n });
+  const cashOutHash = await walletClient.writeContract(cashOutRequest.request);
+  const cashOutReceipt = await publicClient.waitForTransactionReceipt({ hash: cashOutHash });
+  const [cashedOut] = parseEventLogs({ abi: casinoAbi, eventName: 'MinesCashedOut', logs: cashOutReceipt.logs });
+  console.error(`[smoke] mines cashOut: ${cashOutHash}`);
+  return {
+    game: 'mines', gameId: placed.args.gameId.toString(), busted: false, revealedSafe,
+    playHash: startHash, settleHash: cashOutHash, payoutUsdc: formatUnits(cashedOut.args.payout, 6),
+  };
+}
+
 // Kept small relative to the seeded bankroll — wheel/plinko can pay out up to
 // 10x-16x the wager, and a bigger wager here can exceed a modest test bankroll's
 // availableBankroll() and revert with InsufficientBankroll.
 const wager = parseUnits('0.5', 6);
 const fee = await publicClient.readContract({ address: CASINO, abi: casinoAbi, functionName: 'getFee' });
 const definitions = [
-  { kind: 0, name: 'roulette', functionName: 'playRoulette', args: (value) => [[{ betType: 1, selection: 0, wager: value }]], outcomeEvent: 'RouletteOutcome' },
+  { kind: 0, name: 'roulette', functionName: 'playRoulette', args: (value) => [[{ betType: 1, selection: 0, numbers: [], wager: value }]], outcomeEvent: 'RouletteOutcome' },
+  { kind: 0, name: 'roulette-split', functionName: 'playRoulette', args: (value) => [[{ betType: 6, selection: 0, numbers: [7, 8], wager: value }]], outcomeEvent: 'RouletteOutcome' },
   { kind: 1, name: 'wheel', functionName: 'playWheel', args: (value) => [1, 20, value], outcomeEvent: 'WheelOutcome' },
   { kind: 2, name: 'plinko', functionName: 'playPlinko', args: (value) => [1, 12, value], outcomeEvent: 'PlinkoOutcome' },
-  { kind: 3, name: 'mines', functionName: 'playMines', args: (value) => [[0, 6, 12], 5, value], outcomeEvent: 'MinesOutcome' },
 ];
 
 const rounds = [];
 for (const definition of definitions) {
   rounds.push(await playRound(definition, wager, fee));
 }
+rounds.push(await playMinesSession(wager, fee));
 
 const creditsBeforeClaim = await publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: 'credits', args: [account.address] });
 // The Megapot claim step needs 1000 accrued credits, which depends on wager size

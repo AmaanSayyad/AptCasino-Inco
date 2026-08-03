@@ -35,6 +35,12 @@ export const ROULETTE_PAYOUT = {
   evenMoney: 2 * 0.97,
 };
 
+/** Split/street/corner/six-line ("covered numbers") return multiplier — odds are
+ *  36/count regardless of table position, matching AptCasino.sol's betType 6. */
+export function rouletteCoveredPayout(count) {
+  return (36 / count) * 0.97;
+}
+
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 export function isRedNumber(n) {
   return RED_NUMBERS.has(n);

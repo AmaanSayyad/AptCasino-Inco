@@ -6,7 +6,8 @@ import { summarizeOutcome } from '@/lib/games/summarize';
 
 export const dynamic = 'force-dynamic';
 
-const PLAY_FUNCTIONS = { roulette: 'playRoulette', wheel: 'playWheel', plinko: 'playPlinko', mines: 'playMines' };
+const PLAY_FUNCTIONS = { roulette: 'playRoulette', wheel: 'playWheel', plinko: 'playPlinko' };
+const COVERED_BET_COUNTS = [2, 3, 4, 6];
 
 /**
  * Builds the on-chain call args server-side from a request body — never trusts a
@@ -21,10 +22,15 @@ function buildCall(game, body) {
     const rawBets = bets.map((bet) => {
       const betType = Number(bet.betType);
       const selection = Number(bet.selection);
+      const numbers = Array.isArray(bet.numbers) ? bet.numbers.map(Number) : [];
       const wager = BigInt(bet.wagerRaw);
-      if (!Number.isInteger(betType) || betType < 0 || betType > 5) throw new Error('Invalid bet type');
+      if (!Number.isInteger(betType) || betType < 0 || betType > 6) throw new Error('Invalid bet type');
+      if (betType === 6) {
+        if (!COVERED_BET_COUNTS.includes(numbers.length)) throw new Error('Covered-numbers bet needs 2, 3, 4, or 6 numbers');
+        if (numbers.some((n) => n < 0 || n > 36) || new Set(numbers).size !== numbers.length) throw new Error('Invalid covered numbers');
+      }
       if (wager <= 0n) throw new Error('Invalid bet wager');
-      return { betType, selection, wager };
+      return { betType, selection, numbers, wager };
     });
     const totalWager = rawBets.reduce((sum, bet) => sum + bet.wager, 0n);
     return { functionName: 'playRoulette', args: [rawBets], wager: totalWager };
@@ -47,19 +53,7 @@ function buildCall(game, body) {
     if (wager <= 0n) throw new Error('Invalid wager');
     return { functionName: 'playPlinko', args: [risk, rows, wager], wager };
   }
-  if (game === 'mines') {
-    const selectedTiles = Array.isArray(body.selectedTiles) ? body.selectedTiles.map(Number) : [];
-    const mineCount = Number(body.mineCount);
-    const wager = BigInt(body.wagerRaw);
-    if (selectedTiles.length === 0 || selectedTiles.length > 10) throw new Error('Pick 1-10 tiles');
-    if (new Set(selectedTiles).size !== selectedTiles.length) throw new Error('Duplicate tile selection');
-    if (selectedTiles.some((tile) => tile < 0 || tile > 24)) throw new Error('Invalid tile index');
-    if (!Number.isInteger(mineCount) || mineCount < 1 || mineCount > 10) throw new Error('Invalid mine count');
-    if (selectedTiles.length + mineCount > 25) throw new Error('Tiles + mines exceed the board');
-    if (wager <= 0n) throw new Error('Invalid wager');
-    return { functionName: 'playMines', args: [selectedTiles, mineCount, wager], wager };
-  }
-  throw new Error('Unknown game');
+  throw new Error('Unknown game — mines uses /api/treasury/mines/{start,reveal,cashout} instead');
 }
 
 export async function POST(request) {

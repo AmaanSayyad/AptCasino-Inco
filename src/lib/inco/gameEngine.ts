@@ -7,7 +7,7 @@ import { usdcAbi, usdcAddress } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
 
 type Stage = 'approving' | 'betting' | 'revealing' | 'settling' | 'done';
-type PlayFunction = 'playRoulette' | 'playWheel' | 'playPlinko' | 'playMines';
+type PlayFunction = 'playRoulette' | 'playWheel' | 'playPlinko';
 
 let lightningPromise: ReturnType<typeof Lightning.baseSepoliaTestnet> | null = null;
 function getLightning() {
@@ -49,7 +49,7 @@ export async function runConfidentialGame({
   functionName: PlayFunction;
   args: readonly unknown[];
   wager: bigint;
-  outcomeEvent: 'RouletteOutcome' | 'WheelOutcome' | 'PlinkoOutcome' | 'MinesOutcome';
+  outcomeEvent: 'RouletteOutcome' | 'WheelOutcome' | 'PlinkoOutcome';
   onStage?: (stage: Stage) => void;
 }) {
   if (!isContractConfigured(aptCasinoAddress)) {
@@ -94,4 +94,70 @@ export async function runConfidentialGame({
   if (!outcomes[0]) throw new Error(`${outcomeEvent} was not found`);
   onStage?.('done');
   return { gameId, playHash, settleHash, outcome: outcomes[0].args };
+}
+
+/**
+ * Mines is a longer-lived session, not a single play->settle round: start locks the
+ * wager and commits an Inco seed (attested + committed here), then the caller reveals
+ * tiles one at a time (revealMinesTile) and cashes out whenever (cashOutMines) — see
+ * AptCasino.sol's startMines/commitMines/revealTile/cashOut for why.
+ */
+export async function startMinesSession({
+  account, mineCount, wager, onStage,
+}: { account: Address; mineCount: number; wager: bigint; onStage?: (stage: Stage) => void }) {
+  if (!isContractConfigured(aptCasinoAddress)) {
+    throw new Error('AptCasino contract is not deployed yet. Set NEXT_PUBLIC_APTCASINO_ADDRESS.');
+  }
+  const fee = await readContract(wagmiConfig, { address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
+
+  const allowance = await readContract(wagmiConfig, {
+    address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [account, aptCasinoAddress],
+  });
+  if (allowance < wager) {
+    onStage?.('approving');
+    const approveHash = await writeContract(wagmiConfig, {
+      address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager], account,
+    });
+    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
+  }
+
+  onStage?.('betting');
+  const startHash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'startMines', args: [mineCount, wager], value: fee, account,
+  });
+  const startReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: startHash });
+  const placed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetPlaced', logs: startReceipt.logs });
+  if (!placed[0]) throw new Error('BetPlaced event was not found');
+  const { gameId, seedHandle } = placed[0].args;
+
+  onStage?.('revealing');
+  const { attestation, signatures } = await reveal(seedHandle);
+
+  onStage?.('settling');
+  const commitHash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'commitMines', args: [gameId, attestation, signatures], account,
+  });
+  await waitForTransactionReceipt(wagmiConfig, { hash: commitHash });
+  onStage?.('done');
+  return { gameId, startHash, commitHash };
+}
+
+export async function revealMinesTile({ account, gameId, tile }: { account: Address; gameId: bigint; tile: number }) {
+  const hash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTile', args: [gameId, tile], account,
+  });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
+  const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs })[0];
+  return { hash, hitMine: Boolean(busted), minePositions: busted?.args.minePositions, revealedCount: revealed?.args.revealedCount };
+}
+
+export async function cashOutMines({ account, gameId }: { account: Address; gameId: bigint }) {
+  const hash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'cashOut', args: [gameId], account,
+  });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const cashedOut = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesCashedOut', logs: receipt.logs })[0];
+  if (!cashedOut) throw new Error('MinesCashedOut event was not found');
+  return { hash, payout: cashedOut.args.payout, minePositions: cashedOut.args.minePositions };
 }

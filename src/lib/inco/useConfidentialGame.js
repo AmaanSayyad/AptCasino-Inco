@@ -9,8 +9,10 @@ import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
 import { useTreasuryAccount } from '@/lib/treasury/useTreasuryAccount';
 
-const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome', mines: 'MinesOutcome' };
-const PLAY_FUNCTIONS = { roulette: 'playRoulette', wheel: 'playWheel', plinko: 'playPlinko', mines: 'playMines' };
+// Mines is a multi-step session (start/reveal/cashOut), not a single play->settle
+// round — see src/lib/inco/useMinesSession.js, which the mines page uses instead.
+const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome' };
+const PLAY_FUNCTIONS = { roulette: 'playRoulette', wheel: 'playWheel', plinko: 'playPlinko' };
 
 export const stageCopy = {
   idle: 'Ready', approving: 'Approving USDC', betting: 'Locking wager on Base',
@@ -76,8 +78,9 @@ export function useConfidentialGame(game) {
 
   /**
    * Roulette-only: places several simultaneous chips in one round (each with its own
-   * stake), matching a real table. `bets` is [{ betType, selection, amount }], `amount`
-   * a USDC string per chip. Total wager (for approve/allowance) is the sum of chips.
+   * stake), matching a real table. `bets` is [{ betType, selection, numbers?, amount }],
+   * `amount` a USDC string per chip, `numbers` only for betType 6 (covered numbers —
+   * split/street/corner/six-line). Total wager (for approve/allowance) is the sum of chips.
    */
   async function playBets(bets) {
     if (!address || game !== 'roulette') return null;
@@ -85,7 +88,7 @@ export function useConfidentialGame(game) {
     setResult(null);
     try {
       const rawBets = bets.map((bet) => ({
-        betType: bet.betType, selection: bet.selection, wager: parseUnits(bet.amount, USDC_DECIMALS),
+        betType: bet.betType, selection: bet.selection ?? 0, numbers: bet.numbers ?? [], wager: parseUnits(bet.amount, USDC_DECIMALS),
       }));
       const totalWagerRaw = rawBets.reduce((sum, bet) => sum + bet.wager, 0n);
       const response = await runConfidentialGame({

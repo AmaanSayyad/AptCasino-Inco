@@ -5,7 +5,7 @@ import { APTCASINO_CHAIN, BASE_SEPOLIA_RPC_URLS, isContractConfigured } from '@/
 import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
 import { usdcAbi, usdcAddress } from '@/lib/contracts/usdc';
 
-const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome', mines: 'MinesOutcome' };
+const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome' };
 
 let account = null;
 export function treasuryAddress() {
@@ -86,6 +86,62 @@ export function playAndSettle({ game, functionName, args, wager }) {
     if (!settled || !outcome) throw new Error('Settlement events were not found');
 
     return { gameId: placed.args.gameId, playHash, settleHash, payout: settled.args.payout, outcome: outcome.args };
+  });
+}
+
+/** Locks the wager and commits the Inco-attested mine layout — the incremental part
+ *  (revealMinesTileTreasury/cashOutMinesTreasury below) happens over later calls. */
+export function startAndCommitMines({ mineCount, wager }) {
+  return serialized(async () => {
+    if (!isContractConfigured(aptCasinoAddress)) throw new Error('AptCasino contract is not configured.');
+    const wallet = walletClient();
+    const fee = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
+
+    const allowance = await publicClient.readContract({ address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [wallet.account.address, aptCasinoAddress] });
+    if (allowance < wager) {
+      const approveHash = await wallet.writeContract({ address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager * 100n] });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+    }
+
+    const startHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'startMines', args: [mineCount, wager], value: fee });
+    const startReceipt = await publicClient.waitForTransactionReceipt({ hash: startHash });
+    const [placed] = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetPlaced', logs: startReceipt.logs });
+    if (!placed) throw new Error('BetPlaced event was not found');
+
+    const { attestation, signatures } = await attestedReveal(placed.args.seedHandle);
+
+    const commitHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'commitMines', args: [placed.args.gameId, attestation, signatures] });
+    await publicClient.waitForTransactionReceipt({ hash: commitHash, confirmations: 2 });
+    // Public RPC nodes can lag a block behind the one that confirmed the receipt.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const session = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getMinesSession', args: [placed.args.gameId] });
+      if (session[4]) break; // committed
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+
+    return { gameId: placed.args.gameId, startHash, commitHash };
+  });
+}
+
+export function revealMinesTileTreasury({ gameId, tile }) {
+  return serialized(async () => {
+    const wallet = walletClient();
+    const hash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTile', args: [gameId, tile] });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
+    const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs })[0];
+    return { hash, hitMine: Boolean(busted), minePositions: busted?.args.minePositions, revealedCount: revealed?.args.revealedCount };
+  });
+}
+
+export function cashOutMinesTreasury({ gameId }) {
+  return serialized(async () => {
+    const wallet = walletClient();
+    const hash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'cashOut', args: [gameId] });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const cashedOut = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesCashedOut', logs: receipt.logs })[0];
+    if (!cashedOut) throw new Error('MinesCashedOut event was not found');
+    return { hash, payout: cashedOut.args.payout, minePositions: cashedOut.args.minePositions };
   });
 }
 
