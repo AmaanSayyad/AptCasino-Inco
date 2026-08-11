@@ -103,6 +103,11 @@ sequenceDiagram
     end
 ```
 
+## Technical Architecture
+
+<img width="1501" height="740" alt="Screenshot 2026-08-11 at 11 57 30 PM" src="https://github.com/user-attachments/assets/64eef718-c7aa-47db-953b-87f7f4528156" />
+
+
 ## Games
 
 | Game | Confidential mechanic |
