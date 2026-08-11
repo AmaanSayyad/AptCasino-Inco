@@ -23,7 +23,85 @@ Wager USDC
 
 Inco settles the round. Megapot is the progression reward inside that same loop — not a marketing link-out.
 
-Deep dive with diagrams: [`howto.md`](./howto.md)
+Deep dive with more diagrams: [`howto.md`](./howto.md)
+
+## Sequence diagrams
+
+### Inco play → attested reveal → settle
+
+Roulette / Wheel / Plinko (wallet mode). Treasury mode uses the same contract calls; the server treasury is `msg.sender`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as Player
+    participant UI as AptCasino UI
+    participant A as AptCasino
+    participant I as Inco Lightning
+
+    P->>UI: Choose game + wager USDC
+    UI->>A: play*(params) + USDC + Inco fee
+    A->>I: e.rand()
+    I-->>A: Sealed seed handle
+    A-->>UI: gameId + seedHandle
+    UI->>I: attestedReveal(handle)
+    I-->>UI: Attestation + covalidator signatures
+    UI->>A: settle(gameId, attestation, signatures)
+    A->>A: Verify attestation, derive outcome, pay USDC
+    A-->>P: Payout (if any) + Megapot credits awarded
+```
+
+### Megapot credits → ticket claim
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as Player
+    participant UI as AptCasino UI
+    participant V as MegapotRewardVault
+    participant B as JackpotRandomTicketBuyer
+    participant M as Megapot Jackpot
+
+    Note over P,V: Credits accrue on every settled round (wallet or treasury ledger)
+    P->>UI: Claim at 1,000 credits
+    alt Wallet mode
+        UI->>V: claimTicket()
+    else Treasury mode
+        UI->>V: claimTicketFor(player) via operator
+    end
+    V->>V: Debit 1,000 credits
+    V->>B: buyTickets(1, player, …)
+    B->>M: Mint ticket NFT
+    M-->>P: Megapot ticket NFT in wallet
+```
+
+### Mines (multi-step session)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as Player
+    participant UI as AptCasino UI
+    participant A as AptCasino
+    participant I as Inco Lightning
+
+    P->>UI: Start Mines (mines count + wager)
+    UI->>A: startMines(...) + USDC + Inco fee
+    A->>I: e.rand() sealed board seed
+    A-->>UI: gameId + seedHandle
+    UI->>I: attestedReveal(handle)
+    I-->>UI: Attestation + signatures
+    UI->>A: commitMines(gameId, attestation, signatures)
+    loop Safe tiles
+        P->>UI: Reveal tile
+        UI->>A: revealTile(gameId, index)
+        A-->>P: Safe or bust
+    end
+    opt Cash out before a mine
+        UI->>A: cashOut(gameId)
+        A-->>P: Payout + Megapot credits
+    end
+```
 
 ## Games
 
