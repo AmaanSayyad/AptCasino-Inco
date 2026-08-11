@@ -123,9 +123,24 @@ export function useConfidentialGame(game) {
       }).then((r) => r.json());
       if (!response.ok) throw new Error(response.error || 'The round could not be completed.');
       setStage('done');
-      const normalized = { gameId: response.outcome?.gameId, playHash: response.playHash, settleHash: response.settleHash, outcome: response.outcome };
+      // API returns payoutRaw (integer USDC units). outcome.payout may also be a string from JSON.
+      const payoutRaw = response.payoutRaw != null
+        ? BigInt(response.payoutRaw)
+        : (response.outcome?.payout != null ? BigInt(response.outcome.payout) : 0n);
+      const normalized = {
+        gameId: response.outcome?.gameId,
+        playHash: response.playHash,
+        settleHash: response.settleHash,
+        outcome: response.outcome,
+        payout: payoutRaw,
+        payoutRaw: Number(payoutRaw),
+      };
       setResult(normalized);
-      treasury.refreshBalance();
+      // Prefer the ledger balance from the same response — avoids a race where a
+      // follow-up /balance read still sees the pre-payout value. Broadcast so the
+      // navbar BalanceChip (separate hook instance) updates without a refresh.
+      if (typeof response.balanceRaw === 'number') treasury.applyBalanceRaw(response.balanceRaw);
+      else void treasury.refreshBalance();
       return normalized;
     } catch (playError) {
       setStage('error');

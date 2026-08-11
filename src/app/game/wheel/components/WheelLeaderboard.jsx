@@ -37,8 +37,16 @@ const WheelLeaderboard = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { borderColor: 'rgba(255,165,0,0.4)' } }}>
                 <Avatar sx={{ width: 28, height: 28, fontSize: 13, bgcolor: row.rank === 1 ? '#FFA500' : row.rank === 2 ? '#C0C0C0' : row.rank === 3 ? '#CD7F32' : '#333947' }}>{row.rank}</Avatar>
                 <Typography color="white" sx={{ flex: 1, fontFamily: 'monospace', fontSize: 13 }}>{row.wallet.slice(0, 6)}…{row.wallet.slice(-4)}</Typography>
-                <Chip size="small" label={`${row.wagered.toLocaleString(undefined, { maximumFractionDigits: 0 })} wagered`} sx={{ bgcolor: 'rgba(104,29,219,0.15)', color: '#a78bfa' }} />
-                <Chip size="small" label={`${row.biggestWin.toLocaleString(undefined, { maximumFractionDigits: 2 })} best win`} sx={{ bgcolor: 'rgba(20,216,84,0.15)', color: '#14D854' }} />
+                <Chip
+                  size="small"
+                  label={`${Number(row.wagered || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC wagered`}
+                  sx={{ bgcolor: 'rgba(104,29,219,0.15)', color: '#a78bfa' }}
+                />
+                <Chip
+                  size="small"
+                  label={`${Number(row.biggestWin || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC best`}
+                  sx={{ bgcolor: 'rgba(20,216,84,0.15)', color: '#14D854' }}
+                />
               </Box>
             </a>
           ))}

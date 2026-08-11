@@ -14,7 +14,6 @@ import BalanceChip from '@/components/treasury/BalanceChip';
 import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
 import { usdcAbi, usdcAddress, USDC_DECIMALS } from '@/lib/contracts/usdc';
-import { rewardVaultAbi, rewardVaultAddress } from '@/lib/contracts/aptCasino';
 import { basescanUrl } from '@/lib/baseSepolia';
 import { buildExpandedWheelSegments, wheelRotationForSegmentIndex } from '@/lib/wheel/wheelSegments';
 import WheelVideo from './components/WheelVideo';
@@ -23,6 +22,7 @@ import WheelStrategyGuide from './components/WheelStrategyGuide';
 import WheelProbability from './components/WheelProbability';
 import WheelHistory from './components/WheelHistory';
 import WheelLeaderboard from './components/WheelLeaderboard';
+import MegapotProgressCard from '@/components/megapot/MegapotProgressCard';
 
 const RISK_INDEX = { low: 0, medium: 1, high: 2 };
 
@@ -180,12 +180,12 @@ export default function WheelPage() {
                 <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
                   <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-600/20 mb-1"><FaCoins className="text-yellow-400" /></div>
                   <div className="text-xs text-white/50 font-sans text-center">Volume</div>
-                  <div className="text-white font-display text-sm md:text-base">{stats ? `${stats.wagered.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC` : '…'}</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats ? `${(stats.wagered / 10 ** USDC_DECIMALS).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC` : '…'}</div>
                 </div>
                 <div className="flex flex-col items-center p-2 bg-black/20 rounded-lg">
                   <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-600/20 mb-1"><FaTrophy className="text-yellow-500" /></div>
                   <div className="text-xs text-white/50 font-sans text-center">Paid Out</div>
-                  <div className="text-white font-display text-sm md:text-base">{stats ? `${stats.paidOut.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC` : '…'}</div>
+                  <div className="text-white font-display text-sm md:text-base">{stats ? `${(stats.paidOut / 10 ** USDC_DECIMALS).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC` : '…'}</div>
                 </div>
               </motion.div>
               <motion.div className="flex flex-wrap justify-between gap-2" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}>
@@ -248,24 +248,18 @@ export default function WheelPage() {
               </>
             )}
             {game.error &&<p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-100">{game.error}</p>}
-            <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
-              <p className="mt-1 text-2xl font-black">{game.credits} <span className="text-sm text-white/50">/ 1000</span></p>
-              <button
-                disabled={!game.vaultConfigured || !game.canClaim || game.claimPending || game.claimReceiptLoading}
-                onClick={() => game.claim({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'claimTicket' })}
-                className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black disabled:opacity-40"
-              >
-                {game.claimPending || game.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
-              </button>
-              {game.claimSucceeded && (
-                <p className="mt-2 text-xs text-emerald-300">
-                  Ticket claimed{game.claimTicketId ? ` (#${game.claimTicketId})` : ''} —{' '}
-                  {game.claimTxHash ? <a href={basescanUrl('tx', game.claimTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan ↗</a> : 'minted to your wallet.'}
-                </p>
-              )}
-              {game.claimError && <p className="mt-2 text-xs text-red-300">{game.claimError}</p>}
-            </div>
+            <MegapotProgressCard
+              credits={game.credits}
+              vaultConfigured={game.vaultConfigured}
+              canClaim={game.canClaim}
+              claimPending={game.claimPending}
+              claimReceiptLoading={game.claimReceiptLoading}
+              claimSucceeded={game.claimSucceeded}
+              claimTicketId={game.claimTicketId}
+              claimTxHash={game.claimTxHash}
+              claimError={game.claimError}
+              onClaim={() => game.claim()}
+            />
             {game.settleHash && (
               <a className="text-center text-xs text-emerald-300 hover:underline" href={basescanUrl('tx', game.settleHash)} target="_blank" rel="noreferrer">View last settlement on BaseScan ↗</a>
             )}

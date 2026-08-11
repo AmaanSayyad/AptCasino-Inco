@@ -4,8 +4,16 @@ import React, { useState } from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Pagination } from '@mui/material';
 import { FaHistory, FaExternalLinkAlt } from 'react-icons/fa';
 import { basescanUrl } from '@/lib/baseSepolia';
+import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 
 const PAGE_SIZE = 10;
+const RAW_TO_USDC = 10 ** USDC_DECIMALS;
+
+function fmtUsdc(raw) {
+  return (Number(raw || 0) / RAW_TO_USDC).toLocaleString(undefined, {
+    maximumFractionDigits: 4,
+  });
+}
 
 /** Faithful port of the original bet-history table, fed by /api/game-history (real, live). */
 const WheelHistory = ({ gameHistory = [] }) => {
@@ -39,8 +47,8 @@ const WheelHistory = ({ gameHistory = [] }) => {
                   return (
                     <TableRow key={row.id}>
                       <TableCell sx={{ color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.08)' }}>{new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                      <TableCell sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.08)' }}>{Number(row.bet_raw).toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</TableCell>
-                      <TableCell sx={{ color: won ? '#14D854' : 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.08)' }}>{won ? '+' : ''}{Number(row.payout_raw).toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</TableCell>
+                      <TableCell sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.08)' }}>{fmtUsdc(row.bet_raw)} USDC</TableCell>
+                      <TableCell sx={{ color: won ? '#14D854' : 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.08)' }}>{won ? '+' : ''}{fmtUsdc(row.payout_raw)} USDC</TableCell>
                       <TableCell sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                         {row.proof_reference && (
                           <a href={basescanUrl('tx', row.proof_reference)} target="_blank" rel="noreferrer" style={{ color: '#681DDB', display: 'inline-flex', alignItems: 'center', gap: 4 }}>

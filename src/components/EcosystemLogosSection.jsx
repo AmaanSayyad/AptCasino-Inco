@@ -1,15 +1,18 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
+import { BRAND_LOGOS } from '@/lib/brandLogos';
+
 const ECOSYSTEM_CHAIN_LOGOS = [
-  { key: 'base', alt: 'Base Sepolia', glyph: 'B' },
-  { key: 'inco', alt: 'Inco Lightning', glyph: 'I' },
-  { key: 'megapot', alt: 'Megapot', glyph: 'M' },
+  { key: 'base', alt: BRAND_LOGOS.base.alt, src: BRAND_LOGOS.base.src, lightPad: false },
+  { key: 'inco', alt: BRAND_LOGOS.inco.alt, src: BRAND_LOGOS.inco.src, lightPad: false },
+  { key: 'megapot', alt: BRAND_LOGOS.megapot.alt, src: BRAND_LOGOS.megapot.src, lightPad: true },
 ];
 const ECOSYSTEM_DEX_LOGOS = [
-  { key: 'casino', alt: 'AptCasino', glyph: 'A' },
-  { key: 'usdc', alt: 'USDC test token', glyph: '$' },
-  { key: 'basescan', alt: 'BaseScan', glyph: 'B' },
+  { key: 'casino', alt: 'AptCasino', src: '/PowerPlay.png', lightPad: false },
+  { key: 'inco-settle', alt: BRAND_LOGOS.inco.alt, src: BRAND_LOGOS.inco.src, lightPad: false },
+  { key: 'megapot-reward', alt: BRAND_LOGOS.megapot.alt, src: BRAND_LOGOS.megapot.src, lightPad: true },
 ];
 
 function shuffle(arr) {
@@ -19,6 +22,24 @@ function shuffle(arr) {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function LogoMark({ logo, decorative = false }) {
+  return (
+    <span
+      className={`ecosystem-marquee-img relative overflow-hidden rounded-xl ${logo.lightPad ? 'bg-white p-1.5' : 'bg-black/20'}`}
+      aria-label={decorative ? undefined : logo.alt}
+      aria-hidden={decorative || undefined}
+    >
+      <Image
+        src={logo.src}
+        alt={decorative ? '' : logo.alt}
+        fill
+        className="object-contain"
+        sizes="64px"
+      />
+    </span>
+  );
 }
 
 /** One logo per partner — indexed once for SEO, screen readers, and reduced-motion users. */
@@ -38,7 +59,7 @@ function PartnerLogoGrid({ items, listLabel }) {
                 : logo.alt
             }
           >
-            <span className="ecosystem-marquee-img flex items-center justify-center rounded-full bg-gradient-to-br from-red-magic to-blue-magic text-2xl font-black text-white" aria-label={logo.alt}>{logo.glyph}</span>
+            <LogoMark logo={logo} />
             {logo.comingSoon && (
               <span className="ecosystem-marquee-soon">
                 {logo.key === 'robinhood' ? 'Building' : 'Soon'}
@@ -75,7 +96,7 @@ function MarqueeRow({ items, durationSeconds, reverse = false }) {
             key={`${logo.key}-motion-${idx}`}
             className={`ecosystem-marquee-tile ${logo.comingSoon ? 'ecosystem-marquee-tile--soon' : ''}`}
           >
-            <span className="ecosystem-marquee-img flex items-center justify-center rounded-full bg-gradient-to-br from-red-magic to-blue-magic text-2xl font-black text-white" aria-hidden>{logo.glyph}</span>
+            <LogoMark logo={logo} decorative />
             {logo.comingSoon && (
               <span className="ecosystem-marquee-soon" aria-hidden>
                 {logo.key === 'robinhood' ? 'Building' : 'Soon'}

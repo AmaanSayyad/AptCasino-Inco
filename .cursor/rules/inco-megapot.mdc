@@ -1,0 +1,65 @@
+---
+description: Inco Lightning + Megapot docs, MCP, and AptCasino integration patterns
+alwaysApply: true
+---
+
+# Inco + Megapot (AptCasino)
+
+When changing games, contracts, treasury settle paths, or Megapot rewards: consult live docs via Inco MCP / these links — do not invent API signatures from memory.
+
+## Canonical docs (study these first)
+
+### Inco
+- Home: https://docs.inco.org/home
+- Quickstart: https://docs.inco.org/quickstart
+- Build a dApp (`create-inco-app`, Base Sepolia + Base mainnet): https://docs.inco.org/quickstart/build-a-dapp
+- Build with AI (skill + MCP): https://docs.inco.org/build-with-ai
+- Games overview (ConfidentialDeck + other patterns): https://docs.inco.org/games/overview
+- Incasino (`e.rand()` play→settle — closest to this repo): https://docs.inco.org/games/incasino
+- Mines (encrypted board): https://docs.inco.org/games/mines
+- Full index: https://docs.inco.org/llms.txt
+- Vibe-code / MCP blog: https://www.inco.org/blog/how-to-vibe-code-with-inco
+- Agent skill source: https://github.com/Inco-fhevm/skills
+- Local skill path: `.agents/skills/lightning` (also `.cursor/skills/lightning`)
+
+### Megapot
+- Protocol reference: https://docs.megapot.io/build-on-megapot/build/protocol-reference
+- Agent entry + decision tree: https://llms.megapot.io/
+- Contracts/addresses (mainnet + Sepolia): https://llms.megapot.io/contracts/reference
+- Live ABIs (do not hardcode stale ABIs): https://llms.megapot.io/abi/
+- Buy random tickets: https://llms.megapot.io/tasks/buy-random
+- Data API: https://llms.megapot.io/data-api
+
+## Tooling already set up in this repo
+
+- **Inco MCP**: `.cursor/mcp.json` → `https://docs.inco.org/mcp`
+- **Inco skill**: installed via `npx skills add Inco-fhevm/skills` → `.agents/skills/lightning`
+- Prefer looking up types/fees/attestations through MCP + skill references before editing Solidity/JS
+
+## How THIS repo maps to the docs
+
+| Concern | AptCasino pattern | Doc archetype |
+|---|---|---|
+| Roulette / Wheel / Plinko | `e.rand()` → attested reveal → `settle` | [Incasino](https://docs.inco.org/games/incasino) play-then-settle |
+| Mines | sealed seed → `commitMines` → reveal/cashout | [Mines](https://docs.inco.org/games/mines) encrypted board |
+| Frontend | `@inco/lightning-js` `Lightning.baseSepoliaTestnet()` + `attestedReveal` | JS SDK attested reveal |
+| Megapot | `MegapotRewardVault` → Sepolia `JackpotRandomTicketBuyer.buyTickets` | llms megapot-buy-random |
+| Network today | **Base Sepolia (84532) only** | create-inco-app supports `NEXT_PUBLIC_NETWORK=mainnet` — not wired here yet |
+
+Important Inco facts:
+- Inco is **TEE-based**, not FHE/zk. "Provably fair" = covalidator attestation.
+- Always `allowThis()` after storing encrypted handles; always fund Inco fees; never `if` on `ebool` — use `.select()`.
+- ConfidentialDeck is for card/hidden-hand games; this casino correctly uses `e.rand()`, not ConfidentialDeck.
+
+Megapot facts:
+- Mainnet RandomTicketBuyer: `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd`
+- Sepolia RandomTicketBuyer (used here): `0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746`
+- Always pass referrer(s) on `buyTickets` when integrating for production revenue.
+- Fetch ABIs from `https://llms.megapot.io/abi/<Name>.json` rather than freezing stale copies.
+
+## When implementing further work
+
+1. Read the lightning skill (`SKILL.md` + `references/games/*`) for privacy/settlement decisions.
+2. Query Inco MCP for current signatures.
+3. For Megapot purchases/claims/UI, follow https://llms.megapot.io/ decision tree.
+4. Keep Megapot inside the **game loop** (credits → claim), not marketing link-outs only.

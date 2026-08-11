@@ -1,7 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { Activity, Trophy, Wallet, Users, Zap } from 'lucide-react';
+import { BRAND_LOGOS } from '@/lib/brandLogos';
 
 function useCountUp(target, duration = 1300, started = false) {
   const [value, setValue] = useState(0);
@@ -51,7 +53,7 @@ function StatCell({ label, value, display, icon: Icon, iconClass, gradient, star
   );
 }
 
-function ChainPanel({ name, logo, accent, labelColor, stats, started }) {
+function ChainPanel({ name, logoSrc, logoAlt, lightPad = false, accent, labelColor, stats, started }) {
   const rounds = useCountUp(stats.rounds, 1100, started);
   const wins = useCountUp(stats.wins, 1100, started);
   const deposits = useCountUp(stats.deposits, 1100, started);
@@ -65,7 +67,9 @@ function ChainPanel({ name, logo, accent, labelColor, stats, started }) {
   return (
     <div className={`min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 ${accent}`}>
       <div className="mb-4 flex items-center gap-2.5">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-red-magic to-blue-magic text-[9px] font-black text-white">{logo}</span>
+        <span className={`relative h-7 w-7 shrink-0 overflow-hidden rounded-md ${lightPad ? 'bg-white p-0.5' : 'bg-black/30'}`}>
+          <Image src={logoSrc} alt={logoAlt} fill className="object-contain" sizes="28px" />
+        </span>
         <span className={`font-display text-sm font-semibold ${labelColor}`}>{name}</span>
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -184,7 +188,8 @@ export default function PlatformIntelligenceSection() {
           <div className="grid grid-cols-1 divide-y divide-white/10 border-t border-white/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             <ChainPanel
               name="Inco Lightning"
-              logo="I"
+              logoSrc={BRAND_LOGOS.inco.src}
+              logoAlt={BRAND_LOGOS.inco.alt}
               accent="bg-emerald-500/[0.04]"
               labelColor="text-emerald-300"
               stats={{
@@ -196,7 +201,9 @@ export default function PlatformIntelligenceSection() {
             />
             <ChainPanel
               name="Megapot"
-              logo="M"
+              logoSrc={BRAND_LOGOS.megapot.src}
+              logoAlt={BRAND_LOGOS.megapot.alt}
+              lightPad
               accent="bg-sky-500/[0.04]"
               labelColor="text-sky-300"
               stats={{

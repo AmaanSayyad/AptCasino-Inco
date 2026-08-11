@@ -1,23 +1,35 @@
-import { useState, useEffect } from "react";
+import Image from "next/image";
 import LaunchGameButton from "./LaunchGameButton";
+import { BRAND_LOGOS } from "@/lib/brandLogos";
 
-/** Product / brand teaser on the landing hero */
+/** Replace this ID when the new Inco + Megapot teaser is ready */
 const HERO_TEASER_VIDEO_ID = "oWGWqhfEMng";
 const HERO_TEASER_EMBED_URL = `https://www.youtube.com/embed/${HERO_TEASER_VIDEO_ID}?rel=0`;
 
+const HERO_BRANDS = [
+  BRAND_LOGOS.base,
+  BRAND_LOGOS.inco,
+  { ...BRAND_LOGOS.megapot, lightPad: true },
+];
+
 export default function HeroSection() {
-  const [isDev, setIsDev] = useState(false);
-
-  useEffect(() => {
-    setIsDev(process.env.NODE_ENV === "development");
-  }, []);
-
   return (
     <section
       id="hero"
       className="site-page-top site-hero site-page-pad-x relative flex w-full flex-col sm:px-10 md:px-20 lg:px-36"
     >
       <div className="font-display z-10 mx-auto flex w-full max-w-7xl flex-col items-center gap-4 sm:gap-6 text-center text-white">
+        <div className="flex flex-wrap items-center justify-center gap-2 px-4">
+          {HERO_BRANDS.map((brand) => (
+            <span
+              key={brand.src}
+              className={`relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-white/10 ${brand.lightPad ? "bg-white p-1" : "bg-white/5"}`}
+              title={brand.alt}
+            >
+              <Image src={brand.src} alt={brand.alt} width={28} height={28} className="h-7 w-7 object-contain" />
+            </span>
+          ))}
+        </div>
         <h1 className="text-[2.25rem] font-extrabold leading-[1.1] sm:text-5xl md:text-6xl tracking-tight px-4">
           100% Provably Fair{" "}
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-red-magic to-blue-magic">
@@ -38,23 +50,15 @@ export default function HeroSection() {
 
       <div className="relative mx-auto mt-12 w-full max-w-4xl sm:mt-16 px-4">
         <div className="absolute -inset-1 bg-gradient-to-r from-red-magic/50 to-blue-magic/50 rounded-2xl blur-md" />
-        <div className="relative">
-          <div className="relative z-10 w-full overflow-hidden rounded-xl aspect-video bg-black ring-1 ring-white/10">
-            <iframe
-              src={HERO_TEASER_EMBED_URL}
-              title="APT-Casino teaser"
-              className="absolute inset-0 h-full w-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
-          </div>
-
-          {isDev && (
-            <div className="absolute top-4 right-4 z-20 rounded-md bg-yellow-600/80 px-2 py-1 text-xs text-white">
-              Dev Mode
-            </div>
-          )}
+        <div className="relative z-10 w-full overflow-hidden rounded-xl aspect-video bg-black ring-1 ring-white/10">
+          <iframe
+            src={HERO_TEASER_EMBED_URL}
+            title="APT-Casino teaser"
+            className="absolute inset-0 h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
         </div>
       </div>
     </section>

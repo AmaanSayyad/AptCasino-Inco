@@ -313,6 +313,8 @@ body {
   opacity: 0.72;
 }
 .ecosystem-marquee-img {
+  position: relative;
+  display: block;
   width: 64px !important;
   height: 64px !important;
 }

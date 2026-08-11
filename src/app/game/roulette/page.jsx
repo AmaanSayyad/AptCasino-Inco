@@ -10,11 +10,11 @@ import { motion } from 'framer-motion';
 import { FaChartLine, FaCoins, FaTrophy, FaBalanceScale, FaPercentage, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
 import { GiRollingDices, GiPokerHand, GiCardRandom } from 'react-icons/gi';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
-import BalanceChip from '@/components/treasury/BalanceChip';
 import PlayModeToggle from '@/components/treasury/PlayModeToggle';
 import { useConfidentialGame, stageCopy } from '@/lib/inco/useConfidentialGame';
 import { isRedNumber } from '@/lib/inco/payoutMath';
 import { basescanUrl } from '@/lib/baseSepolia';
+import { formatUnits } from 'viem';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
 import { muiStyles } from './styles';
 import RouletteHistory from './components/RouletteHistory';
@@ -22,8 +22,8 @@ import RouletteLeaderboard from './components/RouletteLeaderboard';
 import StrategyGuide from './components/StrategyGuide';
 import RouletteGameIntro from './components/RouletteGameIntro';
 import RoulettePayout from './components/RoulettePayout';
-import WinProbabilities from './components/WinProbabilities';
 import { RouletteInfoTriggers, RouletteInfoDialog } from './components/RouletteInfoPanel';
+import MegapotProgressCard from '@/components/megapot/MegapotProgressCard';
 
 const theme = createTheme(muiStyles.dark);
 const QUICK_BETS = [0.5, 1, 5, 10, 25, 50];
@@ -48,7 +48,8 @@ function useRouletteStats() {
       setStats({
         bets: row ? row.bets.toLocaleString() : '0',
         volume: row ? `${(row.wagered / 10 ** USDC_DECIMALS).toFixed(2)} USDC` : '0 USDC',
-        maxWin: `${(maxWin / 10 ** USDC_DECIMALS).toFixed(2)} USDC`,
+        // leaderboard amounts are already USDC (not raw)
+        maxWin: `${maxWin.toFixed(2)} USDC`,
       });
     });
     return () => { cancelled = true; };
@@ -310,47 +311,60 @@ const arrayReducer = (state, action) => {
 function BettingStats({ rounds }) {
   const stats = useMemo(() => {
     if (rounds.length === 0) return null;
-    const wins = rounds.filter((r) => r.payout > r.wager);
-    const totalWagered = rounds.reduce((s, r) => s + r.wager, 0);
-    const netProfit = rounds.reduce((s, r) => s + (r.payout - r.wager), 0);
+    // A win pays back stake + profit, so payout > 0 (and typically > wager for even-money).
+    const wins = rounds.filter((r) => Number(r.payout) > 0);
+    const netProfit = rounds.reduce((s, r) => s + (Number(r.payout) - Number(r.wager)), 0);
     const counts = new Map();
     for (const r of rounds) counts.set(r.number, (counts.get(r.number) ?? 0) + 1);
     const hotNumbers = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([number]) => number);
-    return { winRate: ((wins.length / rounds.length) * 100).toFixed(1), rounds: rounds.length, winCount: wins.length, netProfit, hotNumbers };
+    return {
+      winRate: ((wins.length / rounds.length) * 100).toFixed(1),
+      rounds: rounds.length,
+      winCount: wins.length,
+      netProfit,
+      hotNumbers,
+    };
   }, [rounds]);
 
   if (!stats) return null;
   return (
-    <Box sx={{ p: 1.5, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2, bgcolor: 'rgba(0,0,0,0.3)' }}>
-      <Typography variant="subtitle1" color="white" sx={{ mb: 1, fontWeight: 700 }}>Session Statistics</Typography>
-      <Grid container spacing={1}>
-        <Grid xs={6} md={4}>
-          <Typography variant="caption" color="text.secondary">Win Rate</Typography>
-          <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{stats.winRate}%</Typography>
-          <Typography variant="caption" color="text.secondary">{stats.winCount}/{stats.rounds} rounds</Typography>
-        </Grid>
-        <Grid xs={6} md={4}>
-          <Typography variant="caption" color="text.secondary">Rounds</Typography>
-          <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{stats.rounds}</Typography>
-        </Grid>
-        <Grid xs={6} md={4}>
-          <Typography variant="caption" color="text.secondary">P/L</Typography>
-          <Typography variant="h6" color={stats.netProfit >= 0 ? 'success.main' : 'error.main'} sx={{ lineHeight: 1.2 }}>
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-4">
+      <p className="mb-3 font-display text-sm font-semibold text-white">Session statistics</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/40">Win rate</p>
+          <p className="font-display text-xl font-bold text-white">{stats.winRate}%</p>
+          <p className="text-[11px] text-white/45">{stats.winCount}/{stats.rounds} rounds</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/40">Rounds</p>
+          <p className="font-display text-xl font-bold text-white">{stats.rounds}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/40">P/L</p>
+          <p className={`font-display text-xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
             {stats.netProfit >= 0 ? '+' : ''}{stats.netProfit.toFixed(2)} USDC
-          </Typography>
-        </Grid>
-        <Grid xs={12}>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Hot Numbers</Typography>
-          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.5 }}>
+          </p>
+        </div>
+      </div>
+      {stats.hotNumbers.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 text-[10px] uppercase tracking-wider text-white/40">Hot numbers</p>
+          <div className="flex flex-wrap gap-1.5">
             {stats.hotNumbers.map((n) => (
-              <Box key={n} sx={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: n === 0 ? 'game.green' : RED_SET.has(n) ? 'game.red' : 'dark.bg', border: '1px solid rgba(255,255,255,0.2)' }}>
-                <Typography variant="caption" fontWeight="bold">{n}</Typography>
-              </Box>
+              <span
+                key={n}
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ring-1 ring-white/15 ${
+                  n === 0 ? 'bg-emerald-600' : RED_SET.has(n) ? 'bg-red-magic' : 'bg-black/50'
+                }`}
+              >
+                {n}
+              </span>
             ))}
-          </Box>
-        </Grid>
-      </Grid>
-    </Box>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -500,11 +514,19 @@ export default function RoulettePage() {
       ? await hook.playTreasury({ bets: bets.map((b) => ({ betType: b.betType, selection: b.selection ?? 0, numbers: b.numbers ?? [], wagerRaw: Math.round(b.amount * 10 ** USDC_DECIMALS) })) })
       : await hook.playBets(bets.map((b) => ({ betType: b.betType, selection: b.selection ?? 0, numbers: b.numbers ?? [], amount: String(b.amount) })));
     if (!response) { setRoundDismissed(true); return; }
-    const winningNumber = Number(response.outcome.winningNumber);
-    const payout = Number(response.payout ?? 0);
+    const winningNumber = Number(response.outcome?.winningNumber);
+    // Wallet path: outcome.payout is a bigint. Treasury path: payout / payoutRaw are set
+    // by useConfidentialGame. Never read response.payout alone — it was undefined in
+    // treasury mode, so Session Statistics treated every win as a total loss.
+    const payoutRaw = response.payout ?? response.outcome?.payout ?? response.payoutRaw ?? 0;
+    const payoutUsdc = Number(
+      typeof payoutRaw === 'bigint' || (typeof payoutRaw === 'string' && /^\d+$/.test(payoutRaw))
+        ? formatUnits(BigInt(payoutRaw), USDC_DECIMALS)
+        : payoutRaw,
+    );
     setRecentResults((prev) => [winningNumber, ...prev].slice(0, 12));
-    setRounds((prev) => [...prev, { number: winningNumber, wager: total, payout }].slice(-50));
-    if (payout > 0) playSound(winSoundRef);
+    setRounds((prev) => [...prev, { number: winningNumber, wager: total, payout: payoutUsdc }].slice(-50));
+    if (payoutUsdc > 0) playSound(winSoundRef);
   }
 
   const winningNumber = hook.stage === 'done' && !roundDismissed ? Number(hook.outcome?.winningNumber) : null;
@@ -533,10 +555,6 @@ export default function RoulettePage() {
         </Box>
 
         <Box className="site-page-pad-x" sx={{ width: '100%', maxWidth: { md: 1680, lg: 1800 }, mx: { md: 'auto' } }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
-            <BalanceChip treasury={hook.treasury} />
-          </Box>
-
           <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', py: 0.75, mb: 2, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 2, gap: 1 }}>
             <Typography variant="body2" sx={{ mx: 1.5, whiteSpace: 'nowrap', color: '#fff', fontWeight: 700 }}>Recent:</Typography>
             {recentResults.length === 0 ? (
@@ -718,33 +736,28 @@ export default function RoulettePage() {
             </Box>
           </Box>
 
-          <Box sx={{ bgcolor: 'dark.card', borderRadius: 2, p: 2.5, mt: 3 }}>
-            <Typography variant="body2" sx={{ color: '#f0abfc', fontWeight: 700, mb: 1 }}>Megapot progress</Typography>
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800 }}>{hook.credits} <Typography component="span" sx={{ color: 'text.secondary', fontSize: 14 }}>/ 1000</Typography></Typography>
-            <button
-              disabled={!hook.vaultConfigured || !hook.canClaim || hook.claimPending || hook.claimReceiptLoading}
-              onClick={() => hook.claim({ address: hook.rewardVaultAddress, abi: hook.rewardVaultAbi, functionName: 'claimTicket' })}
-              className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-3 text-sm font-black disabled:opacity-40 md:w-auto"
-            >
-              {hook.claimPending || hook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
-            </button>
-            {hook.claimSucceeded && (
-              <Typography variant="body2" sx={{ color: '#14D854', mt: 1 }}>
-                Ticket claimed{hook.claimTicketId ? ` (#${hook.claimTicketId})` : ''} —{' '}
-                {hook.claimTxHash ? <a href={basescanUrl('tx', hook.claimTxHash)} target="_blank" rel="noreferrer" style={{ color: '#14D854' }}>view on BaseScan ↗</a> : 'minted to your wallet.'}
-              </Typography>
-            )}
-            {hook.claimError && <Typography variant="body2" sx={{ color: '#f87171', mt: 1 }}>{hook.claimError}</Typography>}
+          <Box sx={{ mt: 3 }}>
+            <MegapotProgressCard
+              credits={hook.credits}
+              vaultConfigured={hook.vaultConfigured}
+              canClaim={hook.canClaim}
+              claimPending={hook.claimPending}
+              claimReceiptLoading={hook.claimReceiptLoading}
+              claimSucceeded={hook.claimSucceeded}
+              claimTicketId={hook.claimTicketId}
+              claimTxHash={hook.claimTxHash}
+              claimError={hook.claimError}
+              onClaim={() => hook.claim()}
+            />
           </Box>
 
           <Box sx={{ mt: { xs: 5, md: 6 } }}>
             <RouletteGameIntro />
           </Box>
 
-          <Grid id="strategy" container spacing={3} sx={{ mt: { xs: 5, md: 6 } }}>
-            <Grid xs={12} md={7}><StrategyGuide /></Grid>
-            <Grid xs={12} md={5}><WinProbabilities /></Grid>
-          </Grid>
+          <Box id="strategy" sx={{ mt: { xs: 5, md: 6 } }}>
+            <StrategyGuide />
+          </Box>
 
           <Box id="payouts" sx={{ mt: { xs: 5, md: 6 } }}>
             <RoulettePayout />

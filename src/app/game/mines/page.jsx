@@ -8,7 +8,6 @@ import { HiOutlineChartBar } from 'react-icons/hi';
 import { useConfidentialGame } from '@/lib/inco/useConfidentialGame';
 import { useMinesSession } from '@/lib/inco/useMinesSession';
 import { USDC_DECIMALS } from '@/lib/contracts/usdc';
-import { basescanUrl } from '@/lib/baseSepolia';
 import MinesForm from './components/MinesForm';
 import MinesBoard from './components/MinesBoard';
 import MinesGameDetail from './components/MinesGameDetail';
@@ -17,6 +16,7 @@ import MinesProbability from './components/MinesProbability';
 import MinesHistory from './components/MinesHistory';
 import MinesLeaderboard from './components/MinesLeaderboard';
 import MinesStrategyGuide from './components/MinesStrategyGuide';
+import MegapotProgressCard from '@/components/megapot/MegapotProgressCard';
 import './mines.css';
 
 function scrollToElement(id) {
@@ -38,7 +38,8 @@ function useMinesStats() {
       setStats({
         bets: row ? row.bets.toLocaleString() : '0',
         volume: row ? `${(row.wagered / 10 ** USDC_DECIMALS).toFixed(2)} USDC` : '0 USDC',
-        maxWin: `${(maxWin / 10 ** USDC_DECIMALS).toFixed(2)} USDC`,
+        // leaderboard amounts are already USDC (not raw)
+        maxWin: `${maxWin.toFixed(2)} USDC`,
       });
     });
     return () => { cancelled = true; };
@@ -180,24 +181,18 @@ export default function Mines() {
         </div>
 
         <div className="mt-4 site-page-pad-x">
-          <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-4">
-            <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-200">Megapot progress</p>
-            <p className="mt-1 text-2xl font-black">{gameHook.credits} <span className="text-sm text-white/50">/ 1000</span></p>
-            <button
-              disabled={!gameHook.vaultConfigured || !gameHook.canClaim || gameHook.claimPending || gameHook.claimReceiptLoading}
-              onClick={() => gameHook.claim()}
-              className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black disabled:opacity-40 md:w-auto"
-            >
-              {gameHook.claimPending || gameHook.claimReceiptLoading ? 'Claiming…' : 'Claim Megapot ticket'}
-            </button>
-            {gameHook.claimSucceeded && (
-              <p className="mt-2 text-xs text-emerald-300">
-                Ticket claimed{gameHook.claimTicketId ? ` (#${gameHook.claimTicketId})` : ''} —{' '}
-                {gameHook.claimTxHash ? <a href={basescanUrl('tx', gameHook.claimTxHash)} target="_blank" rel="noreferrer" className="underline">view on BaseScan ↗</a> : 'minted to your wallet.'}
-              </p>
-            )}
-            {gameHook.claimError && <p className="mt-2 text-xs text-red-300">{gameHook.claimError}</p>}
-          </div>
+          <MegapotProgressCard
+            credits={gameHook.credits}
+            vaultConfigured={gameHook.vaultConfigured}
+            canClaim={gameHook.canClaim}
+            claimPending={gameHook.claimPending}
+            claimReceiptLoading={gameHook.claimReceiptLoading}
+            claimSucceeded={gameHook.claimSucceeded}
+            claimTicketId={gameHook.claimTicketId}
+            claimTxHash={gameHook.claimTxHash}
+            claimError={gameHook.claimError}
+            onClaim={() => gameHook.claim()}
+          />
         </div>
 
         <div className="mt-10 site-page-pad-x">

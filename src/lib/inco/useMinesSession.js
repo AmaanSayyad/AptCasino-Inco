@@ -54,7 +54,8 @@ export function useMinesSession({ treasury }) {
         }).then((r) => r.json());
         if (!res.ok) throw new Error(res.error || 'Could not start the round.');
         setGameId(res.gameId);
-        treasury.refreshBalance();
+        if (typeof res.balanceRaw === 'number') treasury.applyBalanceRaw(res.balanceRaw);
+        else void treasury.refreshBalance();
       } else {
         const wagerRaw = parseUnits(wager, USDC_DECIMALS);
         const session = await startMinesSession({ account: address, mineCount, wager: wagerRaw, onStage: setStage });
@@ -103,7 +104,8 @@ export function useMinesSession({ treasury }) {
         if (!res.ok) throw new Error(res.error || 'Cash out failed.');
         setPayout(res.payoutRaw);
         setMinePositions(res.minePositions ?? null);
-        treasury.refreshBalance();
+        if (typeof res.balanceRaw === 'number') treasury.applyBalanceRaw(res.balanceRaw);
+        else void treasury.refreshBalance();
       } else {
         const res = await cashOutMines({ account: address, gameId: BigInt(gameId) });
         setPayout(Number(res.payout));

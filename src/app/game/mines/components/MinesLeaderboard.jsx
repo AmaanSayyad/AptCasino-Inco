@@ -19,7 +19,7 @@ export default function MinesLeaderboard() {
             <div key={row.wallet} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
               <span className="text-white/50">#{row.rank}</span>
               <span className="truncate font-mono text-xs text-white/70">{row.wallet}</span>
-              <span className="font-semibold text-emerald-300">{(row.won / 1e6).toFixed(2)} USDC won</span>
+              <span className="font-semibold text-emerald-300">{Number(row.won || 0).toFixed(2)} USDC won</span>
             </div>
           ))}
         </div>

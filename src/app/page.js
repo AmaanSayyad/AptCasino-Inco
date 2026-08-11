@@ -5,8 +5,6 @@ import FeatureSection from '@/components/FeatureSection';
 import GameCarousel from '@/components/GameCarousel';
 import LetsPlaySection from '@/components/LetsPlaySection';
 import PlatformIntelligenceSection from '@/components/PlatformIntelligenceSection';
-import EcosystemLogosSection from '@/components/EcosystemLogosSection';
-import AdvisoryPartnershipsSection from '@/components/AdvisoryPartnershipsSection';
 import TestimonialsSection from '@/components/TestimonialsSection';
 import UpcomingTournaments from '@/components/UpcomingTournaments';
 import NewsUpdates from '@/components/NewsUpdates';
@@ -20,8 +18,6 @@ export default function Home() {
       <GameCarousel />
       <PlatformIntelligenceSection />
       <ProvablyFairSection />
-      <EcosystemLogosSection />
-      <AdvisoryPartnershipsSection />
       <UpcomingTournaments />
       <TestimonialsSection />
       <NewsUpdates />

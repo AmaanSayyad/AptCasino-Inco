@@ -39,7 +39,7 @@ export default function PlinkoLeaderboard() {
                 <span className="w-5 text-center text-xs font-bold text-yellow-300">#{row.rank}</span>
                 {row.wallet.slice(0, 6)}…{row.wallet.slice(-4)}
               </span>
-              <span className="text-xs text-white/50">{(row.wagered / 1e6).toFixed(2)} USDC wagered</span>
+              <span className="text-xs text-white/50">{Number(row.wagered || 0).toFixed(2)} USDC wagered</span>
             </a>
           ))}
         </div>
