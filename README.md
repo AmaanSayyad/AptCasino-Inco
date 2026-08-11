@@ -199,9 +199,9 @@ The deployer needs Base Sepolia ETH (gas + Inco fees) and USDC for bankroll. `Me
 
 Agent tooling in-repo: `.agents/skills/lightning`, `.cursor/skills/megapot`, `.cursor/rules/inco-megapot.mdc`.
 
-## Summer Game Jam note
+## Jam note
 
-Built for the Inco + Megapot Summer Game Jam on Base Sepolia. Pre-existing AptCasino brand/UI patterns were adapted; the confidential Inco settle path and Megapot credits→ticket loop were implemented for this jam. See the submission disclosure for details.
+Built for the Inco + Megapot on Base Sepolia. Pre-existing AptCasino brand/UI patterns were adapted; the confidential Inco settle path and Megapot credits→ticket loop were implemented for this jam. See the submission disclosure for details.
 
 ## License / conduct
 
