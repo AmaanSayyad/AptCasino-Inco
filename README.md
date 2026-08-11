@@ -2,7 +2,10 @@
 
 Confidential casino on **Base Sepolia** powered by **Inco Lightning** (attested randomness) and **Megapot** (gameplay → lottery ticket NFTs).
 
-**Live demo:** [https://aptcasino-inco-gamma.vercel.app](https://aptcasino-inco-gamma.vercel.app)
+**Live website:** [https://aptcasino-inco-gamma.vercel.app/](https://aptcasino-inco-gamma.vercel.app/)  
+**GitHub:** [https://github.com/AmaanSayyad/AptCasino-Inco](https://github.com/AmaanSayyad/AptCasino-Inco)  
+**Deck:** [AptCasino Inco × Megapot (Figma)](https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot)  
+**Contact:** [amaansayyad2001@gmail.com](mailto:amaansayyad2001@gmail.com)
 
 > Testnet only. Balances, tickets, and USDC here are Base Sepolia assets — not mainnet value.
 
@@ -181,9 +184,13 @@ The deployer needs Base Sepolia ETH (gas + Inco fees) and USDC for bankroll. `Me
 
 ## Documentation & links
 
-| Doc | Link |
+| Resource | Link |
 | --- | --- |
-| How Inco + Megapot work in this app | [`howto.md`](./howto.md) |
+| Live website | https://aptcasino-inco-gamma.vercel.app/ |
+| GitHub | https://github.com/AmaanSayyad/AptCasino-Inco |
+| Pitch deck | https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot |
+| Contact | amaansayyad2001@gmail.com |
+| How Inco + Megapot work | [`howto.md`](./howto.md) |
 | Inco games overview | https://docs.inco.org/games/overview |
 | Incasino (play → settle) | https://docs.inco.org/games/incasino |
 | Inco Mines | https://docs.inco.org/games/mines |

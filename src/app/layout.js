@@ -12,7 +12,7 @@ export const metadata = {
   title: { default: "AptCasino · Inco × Megapot", template: "%s · AptCasino" },
   description:
     "Four confidential Inco Lightning games with Megapot ticket rewards on Base Sepolia.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://aptcasino-inco-gamma.vercel.app"),
   openGraph: {
     type: "website",
     title: "AptCasino · Inco × Megapot",

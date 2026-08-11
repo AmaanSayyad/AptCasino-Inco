@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND_LOGOS } from '@/lib/brandLogos';
+import { PROJECT_LINKS } from '@/lib/projectLinks';
 
 const FOOTER_BRANDS = [
   BRAND_LOGOS.base,
@@ -48,8 +49,30 @@ export default function Footer() {
           </ul>
         </div>
         <div className="lg:col-span-4">
-          <h3 className="font-display text-lg">Deployed contracts</h3>
-          <p className="mt-3 text-xs leading-6 text-white/55">
+          <h3 className="font-display text-lg">Project</h3>
+          <ul className="mt-3 space-y-2 text-xs text-white/60">
+            <li>
+              <a href={PROJECT_LINKS.live} target="_blank" rel="noreferrer" className="hover:text-white">
+                Live website
+              </a>
+            </li>
+            <li>
+              <a href={PROJECT_LINKS.github} target="_blank" rel="noreferrer" className="hover:text-white">
+                GitHub
+              </a>
+            </li>
+            <li>
+              <a href={PROJECT_LINKS.deck} target="_blank" rel="noreferrer" className="hover:text-white">
+                Pitch deck
+              </a>
+            </li>
+            <li>
+              <a href={`mailto:${PROJECT_LINKS.email}`} className="hover:text-white">
+                {PROJECT_LINKS.email}
+              </a>
+            </li>
+          </ul>
+          <p className="mt-4 text-xs leading-6 text-white/45">
             AptCasino and MegapotRewardVault are live on Base Sepolia.
           </p>
         </div>

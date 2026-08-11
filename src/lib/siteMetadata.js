@@ -1,9 +1,10 @@
 /**
  * Shared Open Graph / Twitter Card metadata for link previews (X, Discord, Telegram).
- * Set NEXT_PUBLIC_SITE_URL in production.
+ * Production canonical origin: https://aptcasino-inco-gamma.vercel.app
+ * Set NEXT_PUBLIC_SITE_URL in production (see .env.example / projectLinks.js).
  */
 
-export const DEFAULT_SITE_URL = 'http://localhost:3000';
+export const DEFAULT_SITE_URL = 'https://aptcasino-inco-gamma.vercel.app';
 
 export const SITE_NAME = 'AptCasino';
 

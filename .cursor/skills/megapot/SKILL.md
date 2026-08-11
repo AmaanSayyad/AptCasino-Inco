@@ -18,7 +18,10 @@ Addresses/ABIs: https://llms.megapot.io/contracts/reference · https://llms.mega
 
 This repo awards gameplay credits then redeems via `MegapotRewardVault` calling Sepolia:
 
-- Live demo: https://aptcasino-inco-gamma.vercel.app
+- Live website: https://aptcasino-inco-gamma.vercel.app/
+- GitHub: https://github.com/AmaanSayyad/AptCasino-Inco
+- Deck: https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot
+- Contact: amaansayyad2001@gmail.com
 - `MegapotRewardVault` (deployed): `0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9`
 - `JackpotRandomTicketBuyer` = `0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746`
 
