@@ -2,6 +2,8 @@
 
 AptCasino is a confidential casino running on **Base Sepolia**. Players wager and receive payouts in **USDC**. Randomness is generated through **Inco Lightning**, while every completed game earns credits that can be redeemed for **Megapot lottery ticket NFTs**.
 
+**Live demo:** [https://aptcasino-inco-gamma.vercel.app](https://aptcasino-inco-gamma.vercel.app) · **Repo overview:** [`README.md`](./README.md)
+
 > [!IMPORTANT]
 > AptCasino currently runs on a testnet. Testnet assets and ticket NFTs do not represent mainnet funds or guaranteed real-world value.
 
@@ -299,11 +301,13 @@ The treasury hot wallet needs Base Sepolia ETH for gas and Inco fees, plus appro
 
 | Component | Address |
 | --- | --- |
-| AptCasino | `0xD75b282f87a00856FBF4Aa06bf65833d4AB4b5D7` |
-| MegapotRewardVault | `0xccec75B83b3Ee3FBAED9a65Da59DBfd585F82943` |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Megapot Jackpot | `0x465dA3c859F193A3807386387bEE941B2A4c3279` |
+| AptCasino | [`0xa9B94c3F2Cf7110AA7425618362FCC2643316B25`](https://sepolia.basescan.org/address/0xa9B94c3F2Cf7110AA7425618362FCC2643316B25) |
+| MegapotRewardVault | [`0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9`](https://sepolia.basescan.org/address/0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9) |
+| USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| Megapot Jackpot | `0x465dA3c859f193A3807386387bEE941B2A4c3279` |
 | Megapot Random Ticket Buyer | `0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746` |
+
+Addresses match `.env.example` / the live Vercel deployment. Always confirm against Basescan if redeploying.
 
 ### Responsibilities
 

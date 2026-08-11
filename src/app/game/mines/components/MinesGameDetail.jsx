@@ -1,32 +1,77 @@
 'use client';
 
-import { FaChartLine } from 'react-icons/fa';
 import { minesMultiplier } from '@/lib/inco/payoutMath';
+import { FaChartLine } from 'react-icons/fa';
 
 const MINE_TABS = [1, 3, 5, 8, 10];
 
-/** Payout ladder card — odds recomputed from the live contract's math, not the original's stale numbers. */
+/** Payout ladder — first-pick multipliers from live AptCasino settlement math. */
 export default function MinesGameDetail() {
+  const rows = MINE_TABS.map((mines) => ({
+    mines,
+    mult: minesMultiplier(mines, 1),
+  }));
+  const maxMult = Math.max(...rows.map((r) => r.mult));
+
   return (
-    <InfoCard icon={<FaChartLine className="text-blue-400" />} title="Payout ladder">
-      <p className="mb-3 text-sm text-white/60">Your potential payout increases with each tile you pick. More mines selected means higher risk and reward.</p>
-      <div className="flex flex-wrap gap-2">
-        {MINE_TABS.map((mines) => (
-          <div key={mines} className="rounded-lg border border-purple-800/20 bg-black/20 px-3 py-2 text-center">
-            <div className="text-xs text-white/45">{mines} mines · 1 pick</div>
-            <div className="text-sm font-bold text-yellow-400">{minesMultiplier(mines, 1).toFixed(2)}x</div>
+    <section className="h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40">
+      <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+        <div className="mb-1 flex items-center gap-2">
+          <div className="h-5 w-1 rounded-full bg-gradient-to-b from-red-magic to-blue-magic" />
+          <h3 className="font-display text-lg font-semibold text-white sm:text-xl">Payout ladder</h3>
+        </div>
+        <p className="text-sm text-white/50">
+          First safe pick payout by mine count. More mines → higher multiplier, lower hit chance.
+        </p>
+      </div>
+
+      <div className="space-y-2.5 p-5 sm:p-6">
+        {rows.map((row) => (
+          <div
+            key={row.mines}
+            className="rounded-xl border border-white/10 bg-black/20 px-3.5 py-3"
+          >
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">{row.mines} {row.mines === 1 ? 'mine' : 'mines'}</p>
+                <p className="text-[11px] text-white/40">after 1 safe pick</p>
+              </div>
+              <p className="font-display text-xl font-bold tabular-nums text-transparent bg-clip-text bg-gradient-to-r from-red-magic to-blue-magic">
+                {row.mult.toFixed(2)}×
+              </p>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-red-magic to-blue-magic"
+                style={{ width: `${Math.max(8, (row.mult / maxMult) * 100)}%` }}
+              />
+            </div>
           </div>
         ))}
       </div>
-    </InfoCard>
+
+      <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/40">
+        <FaChartLine className="mr-1.5 inline text-fuchsia-300" />
+        Multipliers include the 3% contract fee from AptCasino settlement math.
+      </div>
+    </section>
   );
 }
 
+/** Shared shell still used by Game history and any legacy callers. */
 export function InfoCard({ icon, title, id, className = '', children }) {
   return (
-    <div id={id} className={`scroll-mt-24 rounded-xl border-2 border-purple-700/30 bg-gradient-to-br from-[#290023]/80 to-[#150012]/90 p-5 shadow-xl shadow-purple-900/20 backdrop-blur-sm ${className}`}>
-      <h3 className="mb-3 flex items-center gap-2 font-display text-lg font-bold text-white">{icon}{title}</h3>
-      {children}
+    <div
+      id={id}
+      className={`scroll-mt-24 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40 ${className}`}
+    >
+      <div className="border-b border-white/10 px-5 py-4 sm:px-6">
+        <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-white">
+          {icon}
+          {title}
+        </h3>
+      </div>
+      <div className="p-5 sm:p-6">{children}</div>
     </div>
   );
 }

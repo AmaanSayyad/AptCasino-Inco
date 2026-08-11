@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { FaChartLine } from 'react-icons/fa';
 import { riskLabelToIndex } from '@/lib/plinko/plinkoBoard';
 import { plinkoMultiplier } from '@/lib/inco/payoutMath';
@@ -10,42 +11,81 @@ function binomial(n, k) {
   return res;
 }
 
-/** Real binomial landing probability per bucket for `rows` coin-flip pegs (matches the contract's bit-count logic). */
+/** Real binomial landing probability per bucket for `rows` coin-flip pegs. */
 function bucketProbabilities(rows) {
   const total = 2 ** rows;
   return Array.from({ length: rows + 1 }, (_, k) => binomial(rows, k) / total);
 }
 
+function barTone(mult) {
+  if (mult >= 2) return 'from-fuchsia-400 to-red-magic';
+  if (mult >= 1) return 'from-emerald-400 to-teal-400';
+  return 'from-white/40 to-white/20';
+}
+
 export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
   const riskIndex = riskLabelToIndex(risk);
-  const probs = bucketProbabilities(rows);
-  const rows_ = probs.map((p, bucket) => ({
-    bucket,
-    probability: p,
-    multiplier: plinkoMultiplier(riskIndex, rows, bucket),
-  }));
+  const rows_ = useMemo(() => {
+    const probs = bucketProbabilities(rows);
+    return probs.map((p, bucket) => ({
+      bucket,
+      probability: p,
+      multiplier: plinkoMultiplier(riskIndex, rows, bucket),
+    }));
+  }, [riskIndex, rows]);
+
+  const maxPct = Math.max(...rows_.map((r) => r.probability * 100), 1);
 
   return (
-    <div className="relative bg-gradient-to-br from-[#1A0015]/95 to-[#0d0008]/90 rounded-xl border border-purple-700/30 p-6 overflow-hidden h-full">
-      <div className="absolute top-0 left-0 right-0 h-[5px] bg-gradient-to-r from-pink-500 via-fuchsia-500 to-blue-500" />
-      <div className="flex items-center gap-3 mb-5 pt-1">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/30 to-purple-600/20 border border-purple-500/40 flex items-center justify-center">
-          <FaChartLine className="text-blue-300" size={18} />
+    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40">
+      <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+        <div className="mb-1 flex items-center gap-2">
+          <div className="h-5 w-1 rounded-full bg-gradient-to-b from-red-magic to-blue-magic" />
+          <h3 className="font-display text-lg font-semibold text-white sm:text-xl">Win probabilities</h3>
         </div>
-        <div>
-          <h3 className="text-lg font-semibold bg-gradient-to-r from-white to-blue-300 bg-clip-text text-transparent">Win Probabilities</h3>
-          <p className="text-xs text-white/50">{rows} rows · {risk} risk</p>
+        <p className="text-sm text-white/50">
+          Live for <span className="font-semibold text-white/75">{rows} rows · {risk}</span> — binomial peg paths, contract multipliers.
+        </p>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4 sm:p-5">
+        <div className="mb-1 grid grid-cols-[3.5rem_1fr_3.25rem_3.5rem] gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-white/35">
+          <span>Bucket</span>
+          <span>Hit chance</span>
+          <span className="text-right">%</span>
+          <span className="text-right">Payout</span>
         </div>
+        {rows_.map((row) => {
+          const pct = row.probability * 100;
+          return (
+            <div
+              key={row.bucket}
+              className="grid grid-cols-[3.5rem_1fr_3.25rem_3.5rem] items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-2.5 py-2"
+            >
+              <span className="font-mono text-xs text-white/70">#{row.bucket}</span>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full bg-gradient-to-r ${barTone(row.multiplier)}`}
+                  style={{ width: `${Math.max(4, (pct / maxPct) * 100)}%` }}
+                />
+              </div>
+              <span className="text-right font-mono text-xs tabular-nums text-white/70">{pct.toFixed(2)}</span>
+              <span
+                className={`text-right font-display text-sm font-bold tabular-nums ${
+                  row.multiplier >= 1 ? 'text-emerald-300' : 'text-white/45'
+                }`}
+              >
+                {row.multiplier.toFixed(2)}×
+              </span>
+            </div>
+          );
+        })}
       </div>
-      <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1 text-sm">
-        {rows_.map((row) => (
-          <div key={row.bucket} className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2">
-            <span className="text-white/60">Bucket {row.bucket}</span>
-            <span className="font-mono text-white/80">{(row.probability * 100).toFixed(2)}%</span>
-            <span className={`font-semibold ${row.multiplier >= 1 ? 'text-emerald-300' : 'text-white/50'}`}>{row.multiplier.toFixed(2)}x</span>
-          </div>
-        ))}
+
+      <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/40">
+        <FaChartLine className="mr-1.5 inline text-fuchsia-300" />
+        Center buckets hit most often; edges pay more and land least.
       </div>
-    </div>
+    </section>
   );
 }

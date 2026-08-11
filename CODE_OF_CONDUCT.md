@@ -1,6 +1,6 @@
 # Contributor Covenant Code of Conduct
 
-Repository note: reviewed during docs refresh on 2026-05-27.
+Repository note: reviewed during AptCasino-Inco docs refresh on 2026-08-11.
 
 ## Our Pledge
 

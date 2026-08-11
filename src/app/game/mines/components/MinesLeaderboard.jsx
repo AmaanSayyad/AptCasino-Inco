@@ -1,29 +1,122 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FaTrophy } from 'react-icons/fa';
-import { InfoCard } from './MinesGameDetail';
+import Link from 'next/link';
+import { FaTrophy, FaMedal, FaCrown } from 'react-icons/fa';
+import { basescanUrl } from '@/lib/baseSepolia';
+
+function shortWallet(address) {
+  if (!address) return '—';
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+function fmtUsdc(n) {
+  return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function RankIcon({ rank }) {
+  if (rank === 1) return <FaCrown className="text-amber-300" />;
+  if (rank === 2) return <FaMedal className="text-white/70" />;
+  if (rank === 3) return <FaMedal className="text-amber-700" />;
+  return <span className="font-display text-xs font-bold text-white/35">#{rank}</span>;
+}
 
 export default function MinesLeaderboard() {
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/leaderboard?game=mines&limit=10').then((r) => r.json()).then((j) => setLeaderboard(j.leaderboard || [])).catch(() => {});
+    let cancelled = false;
+    fetch('/api/leaderboard?game=mines&limit=10')
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setRows(j.leaderboard || []); })
+      .catch(() => { if (!cancelled) setRows([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
+  const maxWon = Math.max(...rows.map((r) => Number(r.won) || 0), 1);
+
   return (
-    <InfoCard icon={<FaTrophy className="text-yellow-400" />} title="Leaderboard" id="leaderboard" className="mt-6">
-      {leaderboard.length === 0 ? <p className="text-sm text-white/50">No rounds recorded yet.</p> : (
-        <div className="space-y-1.5">
-          {leaderboard.slice(0, 10).map((row) => (
-            <div key={row.wallet} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-              <span className="text-white/50">#{row.rank}</span>
-              <span className="truncate font-mono text-xs text-white/70">{row.wallet}</span>
-              <span className="font-semibold text-emerald-300">{Number(row.won || 0).toFixed(2)} USDC won</span>
+    <section
+      id="leaderboard"
+      className="scroll-mt-24 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40"
+    >
+      <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <FaTrophy className="text-amber-300" />
+              <h3 className="font-display text-lg font-semibold text-white sm:text-xl">Leaderboard</h3>
             </div>
-          ))}
+            <p className="text-sm text-white/50">Top Mines wallets by payout on Base Sepolia.</p>
+          </div>
+          <Link
+            href="/leaderboard?game=mines"
+            className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-fuchsia-300 hover:text-fuchsia-200"
+          >
+            Full board →
+          </Link>
         </div>
-      )}
-    </InfoCard>
+      </div>
+
+      <div className="p-4 sm:p-5">
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="h-14 animate-pulse rounded-xl bg-white/[0.04]" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-10 text-center text-sm text-white/45">
+            No rounds recorded yet — cash out a board to appear here.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rows.slice(0, 8).map((row) => {
+              const won = Number(row.won || 0);
+              return (
+                <a
+                  key={row.wallet}
+                  href={basescanUrl('address', row.wallet)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`block rounded-xl border px-3 py-2.5 transition hover:border-white/20 ${
+                    row.rank <= 3
+                      ? 'border-fuchsia-400/20 bg-gradient-to-r from-red-magic/10 to-blue-magic/10'
+                      : 'border-white/10 bg-black/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/30 ring-1 ring-white/10">
+                        <RankIcon rank={row.rank} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm text-white/85">{shortWallet(row.wallet)}</p>
+                        <p className="text-[11px] text-white/35">
+                          {Number(row.bets || 0)} rounds
+                          {row.wagered != null ? ` · ${fmtUsdc(row.wagered)} wagered` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold tabular-nums text-emerald-300">{fmtUsdc(won)} USDC</p>
+                      <p className="text-[10px] uppercase tracking-wider text-white/35">won</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-400"
+                      style={{ width: `${Math.max(6, (won / maxWon) * 100)}%` }}
+                    />
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
