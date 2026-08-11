@@ -16,11 +16,16 @@ export const MEGAPOT_TESTNET = {
   randomTicketBuyer: '0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746',
 } as const;
 
+/** Platform wallet used as primary Megapot referrer on ticket buys (override via env). */
+export const PLATFORM_REFERRER_ADDRESS = (process.env.NEXT_PUBLIC_PLATFORM_REFERRER ||
+  process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
+  '0x0000000000000000000000000000000000000000') as `0x${string}`;
+
 export const CASINO_ADDRESS = (process.env.NEXT_PUBLIC_APTCASINO_ADDRESS ||
-  '0xa9B94c3F2Cf7110AA7425618362FCC2643316B25') as `0x${string}`;
+  '0xe2c0864966d8bB7B2c334A7bd27945970Dc68792') as `0x${string}`;
 
 export const REWARD_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_MEGAPOT_REWARD_VAULT_ADDRESS ||
-  '0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9') as `0x${string}`;
+  '0xC4be5B0c5C3d9F163B138e187BfCa82cA2aEAC80') as `0x${string}`;
 
 export function basescanUrl(kind: 'address' | 'tx', value: string) {
   return `https://sepolia.basescan.org/${kind}/${value}`;

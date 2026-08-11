@@ -289,6 +289,20 @@ contract AptCasino is Ownable {
     }
 
     function revealTile(uint256 gameId, uint8 tile) external nonReentrant returns (bool hitMine) {
+        return _revealTile(gameId, tile);
+    }
+
+    /// @notice Reveal multiple safe tiles in one tx (stops early if a mine is hit).
+    ///         Cuts Mines UX latency when the player (or treasury) wants multi-pick.
+    function revealTiles(uint256 gameId, uint8[] calldata tiles) external nonReentrant returns (bool hitMine) {
+        if (tiles.length == 0 || tiles.length > 24) revert InvalidInput();
+        for (uint256 i; i < tiles.length; i++) {
+            hitMine = _revealTile(gameId, tiles[i]);
+            if (hitMine) return true;
+        }
+    }
+
+    function _revealTile(uint256 gameId, uint8 tile) private returns (bool hitMine) {
         MinesSession storage session = minesSessions[gameId];
         if (session.player != msg.sender) revert SessionNotFound();
         if (!session.committed) revert NotCommitted();

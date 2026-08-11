@@ -140,13 +140,14 @@ Both modes use the same on-chain randomness verification and payout math.
 
 | Contract | Address |
 | --- | --- |
-| AptCasino | [`0xa9B94c3F2Cf7110AA7425618362FCC2643316B25`](https://sepolia.basescan.org/address/0xa9B94c3F2Cf7110AA7425618362FCC2643316B25) |
-| MegapotRewardVault | [`0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9`](https://sepolia.basescan.org/address/0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9) |
+| AptCasino | [`0xe2c0864966d8bB7B2c334A7bd27945970Dc68792`](https://sepolia.basescan.org/address/0xe2c0864966d8bB7B2c334A7bd27945970Dc68792) |
+| MegapotRewardVault | [`0xC4be5B0c5C3d9F163B138e187BfCa82cA2aEAC80`](https://sepolia.basescan.org/address/0xC4be5B0c5C3d9F163B138e187BfCa82cA2aEAC80) |
 | USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Megapot Jackpot | `0x465dA3c859f193A3807386387bEE941B2A4c3279` |
 | JackpotRandomTicketBuyer | `0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746` |
+| Platform referrer (Megapot fees) | `0x0F455b5a385c508142a2861e0f541550119afA28` (treasury) |
 
-Ticket buys currently pass empty referrer / referral-split arrays (testnet).
+Ticket claims pass **platform + inviter** referrers (70/30 when invited, else 100% platform). Mines supports `revealTiles` batch.
 
 ## Local development
 

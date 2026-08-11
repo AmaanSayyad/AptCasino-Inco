@@ -18,10 +18,11 @@ function getLightning() {
 async function reveal(seedHandle: Hex) {
   const lightning = await getLightning();
   let lastError: unknown;
-  for (let attempt = 0; attempt < 40; attempt++) {
+  // Tuned for Base Sepolia: shorter backoff / outer wait than the prior 3s×40 path.
+  for (let attempt = 0; attempt < 24; attempt++) {
     try {
       const [result] = await lightning.attestedReveal([seedHandle], {
-        backoffConfig: { maxRetries: 8, baseDelayInMs: 2_000, backoffFactor: 1.2 },
+        backoffConfig: { maxRetries: 6, baseDelayInMs: 800, backoffFactor: 1.15 },
       });
       const raw = result.plaintext.value;
       const value = pad(toHex(typeof raw === 'boolean' ? (raw ? 1 : 0) : raw), { size: 32 });
@@ -31,7 +32,7 @@ async function reveal(seedHandle: Hex) {
       };
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await new Promise((resolve) => setTimeout(resolve, 600));
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Inco reveal timed out');
@@ -150,6 +151,22 @@ export async function revealMinesTile({ account, gameId, tile }: { account: Addr
   const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
   const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs })[0];
   return { hash, hitMine: Boolean(busted), minePositions: busted?.args.minePositions, revealedCount: revealed?.args.revealedCount };
+}
+
+export async function revealMinesTiles({ account, gameId, tiles }: { account: Address; gameId: bigint; tiles: number[] }) {
+  const hash = await writeContract(wagmiConfig, {
+    address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTiles', args: [gameId, tiles], account,
+  });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
+  const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs });
+  return {
+    hash,
+    hitMine: Boolean(busted),
+    minePositions: busted?.args.minePositions,
+    revealedCount: revealed[revealed.length - 1]?.args.revealedCount,
+    revealedTiles: revealed.map((e) => Number(e.args.tile)),
+  };
 }
 
 export async function cashOutMines({ account, gameId }: { account: Address; gameId: bigint }) {

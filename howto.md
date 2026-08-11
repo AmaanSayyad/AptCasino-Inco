@@ -154,7 +154,7 @@ The UI displays the sum of both pools so progress remains visible when switching
 3. The vault spends its USDC through Megapot's `buyTickets(...)` integration.
 4. Megapot mints the ticket NFT directly to the player's wallet.
 
-Referral and referral-split arrays are intentionally empty for these purchases.
+Referral arrays are populated on every claim buy: **platform referrer** (always, when set) plus the player’s **AptCasino inviter** at 70/30 when present. Source tag remains `keccak256("APTCASINO")`.
 
 ## Game-by-game breakdown
 
@@ -301,8 +301,8 @@ The treasury hot wallet needs Base Sepolia ETH for gas and Inco fees, plus appro
 
 | Component | Address |
 | --- | --- |
-| AptCasino | [`0xa9B94c3F2Cf7110AA7425618362FCC2643316B25`](https://sepolia.basescan.org/address/0xa9B94c3F2Cf7110AA7425618362FCC2643316B25) |
-| MegapotRewardVault | [`0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9`](https://sepolia.basescan.org/address/0x7Ec9088C4A9Bf88dC38FEdb649FD7303E5391ea9) |
+| AptCasino | [`0xe2c0864966d8bB7B2c334A7bd27945970Dc68792`](https://sepolia.basescan.org/address/0xe2c0864966d8bB7B2c334A7bd27945970Dc68792) |
+| MegapotRewardVault | [`0xC4be5B0c5C3d9F163B138e187BfCa82cA2aEAC80`](https://sepolia.basescan.org/address/0xC4be5B0c5C3d9F163B138e187BfCa82cA2aEAC80) |
 | USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Megapot Jackpot | `0x465dA3c859f193A3807386387bEE941B2A4c3279` |
 | Megapot Random Ticket Buyer | `0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746` |

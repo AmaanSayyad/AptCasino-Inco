@@ -76,9 +76,30 @@ export function useMegapotCredits(treasury) {
   const canClaimOnChain = onChainCredits >= 1000;
   const canClaim = canClaimTreasury || canClaimOnChain;
 
-  function claim() {
+  async function resolveInviter() {
+    if (!address) return null;
+    try {
+      const res = await fetch(`/api/referrals/inviter?wallet=${address}`).then((r) => r.json());
+      return res?.inviter || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function claim() {
     if (canClaimTreasury) return claimTreasuryTicket();
-    if (canClaimOnChain) return claimOnChain({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'claimTicket' });
+    if (canClaimOnChain) {
+      const inviter = await resolveInviter();
+      if (inviter) {
+        return claimOnChain({
+          address: rewardVaultAddress,
+          abi: rewardVaultAbi,
+          functionName: 'claimTicketWithInviter',
+          args: [inviter],
+        });
+      }
+      return claimOnChain({ address: rewardVaultAddress, abi: rewardVaultAbi, functionName: 'claimTicket' });
+    }
     return null;
   }
 

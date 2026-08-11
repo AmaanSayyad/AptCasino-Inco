@@ -218,8 +218,24 @@ export default function PlinkoGame({ rowCount, riskLevel, busy, stage, outcome, 
             </svg>
             {busy && !ballVisible && (
               <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1A0015]/70">
-                <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-fuchsia-400" aria-hidden />
+                <div className="relative flex h-16 w-16 items-center justify-center">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-fuchsia-400/20" aria-hidden />
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-fuchsia-400" aria-hidden />
+                  <span className="absolute h-3 w-3 rounded-full bg-[#ff6b6b] shadow-[0_0_12px_rgba(255,107,107,0.9)] animate-bounce" aria-hidden />
+                </div>
                 <p className="text-xs font-semibold text-white/80">{stageLabel || 'Settling round…'}</p>
+                <p className="max-w-[14rem] text-center text-[10px] text-white/45">
+                  Inco attestation in flight — ball drops the moment the bucket is settled on-chain.
+                </p>
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <span
+                      key={i}
+                      className="h-1.5 w-1.5 rounded-full bg-white/30 animate-pulse"
+                      style={{ animationDelay: `${i * 120}ms` }}
+                    />
+                  ))}
+                </div>
               </div>
             )}
             <div className="pointer-events-none absolute inset-0 z-20">
