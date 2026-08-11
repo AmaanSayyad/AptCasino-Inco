@@ -21,7 +21,11 @@ export function treasuryAddress() {
 }
 
 const transport = http(BASE_SEPOLIA_RPC_URLS[0], { retryCount: 2, timeout: 20_000 });
-const publicClient = createPublicClient({ chain: APTCASINO_CHAIN, transport });
+// ponytail: viem's default pollingInterval is 4s, so every waitForTransactionReceipt
+// below burned up to 4s *after* the block already landed (Base blocks are 2s). A
+// plinko round waits on 2 receipts, a mines tile on 1 — this is the single biggest
+// source of the "game feels slow" latency. 250ms if RPC rate limits bite, raise it.
+const publicClient = createPublicClient({ chain: APTCASINO_CHAIN, transport, pollingInterval: 250 });
 function walletClient() {
   privateKeyToAccount(process.env.TREASURY_PRIVATE_KEY);
   return createWalletClient({ account: privateKeyToAccount(process.env.TREASURY_PRIVATE_KEY), chain: APTCASINO_CHAIN, transport });
@@ -58,16 +62,33 @@ function serialized(fn) {
   return next;
 }
 
+// ponytail: getFee is contract config, not per-round state — 60s TTL cache instead of
+// an RPC read before every single play/start. Owner fee changes take <=60s to apply.
+let feeCache = { value: null, at: 0 };
+async function getFeeCached() {
+  if (feeCache.value != null && Date.now() - feeCache.at < 60_000) return feeCache.value;
+  const value = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
+  feeCache = { value, at: Date.now() };
+  return value;
+}
+
+// ponytail: local mirror of the treasury's on-chain USDC allowance. Decremented
+// optimistically per round so the common case costs zero RPC reads; drifting LOW just
+// forces a re-read (safe direction), never a skipped approve.
+let allowanceCache = null;
+
 /** One large approve so per-round play skips the 2-confirmation approve path. */
 async function ensureAllowance(wallet, spender, wager) {
   const readAllowance = () => publicClient.readContract({ address: usdcAddress, abi: usdcAbi, functionName: 'allowance', args: [wallet.account.address, spender] });
-  if ((await readAllowance()) >= wager) return;
+  if (allowanceCache == null || allowanceCache < wager) allowanceCache = await readAllowance();
+  if (allowanceCache >= wager) { allowanceCache -= wager; return; }
   // Approve a large buffer once (1000x max wager class) to avoid re-approve on every round.
   const amount = wager * 10_000n < 1_000_000_000_000n ? 1_000_000_000_000n : wager * 10_000n;
   const approveHash = await wallet.writeContract({ address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [spender, amount] });
   await publicClient.waitForTransactionReceipt({ hash: approveHash, confirmations: RECEIPT_CONFIRMATIONS });
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    if ((await readAllowance()) >= wager) return;
+    const fresh = await readAllowance();
+    if (fresh >= wager) { allowanceCache = fresh - wager; return; }
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
   throw new Error('USDC allowance did not propagate after approve');
@@ -80,8 +101,7 @@ export function playAndSettle({ game, functionName, args, wager }) {
   return serialized(async () => {
     if (!isContractConfigured(aptCasinoAddress)) throw new Error('AptCasino contract is not configured.');
     const wallet = walletClient();
-    const fee = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
-    await ensureAllowance(wallet, aptCasinoAddress, wager);
+    const [fee] = await Promise.all([getFeeCached(), ensureAllowance(wallet, aptCasinoAddress, wager)]);
 
     const playHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName, args, value: fee });
     const playReceipt = await publicClient.waitForTransactionReceipt({ hash: playHash, confirmations: RECEIPT_CONFIRMATIONS });
@@ -105,8 +125,7 @@ export function startAndCommitMines({ mineCount, wager }) {
   return serialized(async () => {
     if (!isContractConfigured(aptCasinoAddress)) throw new Error('AptCasino contract is not configured.');
     const wallet = walletClient();
-    const fee = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getFee' });
-    await ensureAllowance(wallet, aptCasinoAddress, wager);
+    const [fee] = await Promise.all([getFeeCached(), ensureAllowance(wallet, aptCasinoAddress, wager)]);
 
     const startHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'startMines', args: [mineCount, wager], value: fee });
     const startReceipt = await publicClient.waitForTransactionReceipt({ hash: startHash, confirmations: RECEIPT_CONFIRMATIONS });

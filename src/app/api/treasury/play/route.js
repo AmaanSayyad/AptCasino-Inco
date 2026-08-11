@@ -100,20 +100,23 @@ export async function POST(request) {
     await db.from('treasury_ledger').insert({ wallet, kind: 'payout', amount_raw: payoutRaw, game });
   }
 
-  await awardMegapotCredits(db, wallet, wagerRaw, payoutRaw).catch((megapotError) => console.error('megapot credit award failed', megapotError));
-
   const outcomeArgs = JSON.parse(JSON.stringify(round.outcome, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
-  await db.from('game_play_events').insert({
-    chain: 'base-sepolia',
-    game,
-    wallet,
-    bet_raw: wagerRaw,
-    payout_raw: payoutRaw,
-    currency: 'USDC',
-    result: summarizeOutcome(game, outcomeArgs),
-    fairness_proof: { gameId: round.gameId.toString(), outcome: outcomeArgs, engine: 'inco-lightning', mode: 'treasury' },
-    proof_reference: round.settleHash,
-  });
+  // ponytail: credits + history are independent of each other and of the response body —
+  // run them concurrently instead of two sequential Supabase round trips per round.
+  await Promise.all([
+    awardMegapotCredits(db, wallet, wagerRaw, payoutRaw).catch((megapotError) => console.error('megapot credit award failed', megapotError)),
+    db.from('game_play_events').insert({
+      chain: 'base-sepolia',
+      game,
+      wallet,
+      bet_raw: wagerRaw,
+      payout_raw: payoutRaw,
+      currency: 'USDC',
+      result: summarizeOutcome(game, outcomeArgs),
+      fairness_proof: { gameId: round.gameId.toString(), outcome: outcomeArgs, engine: 'inco-lightning', mode: 'treasury' },
+      proof_reference: round.settleHash,
+    }),
+  ]);
 
   return NextResponse.json({
     ok: true,

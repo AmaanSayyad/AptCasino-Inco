@@ -6,6 +6,12 @@ import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
 import { usdcAbi, usdcAddress } from '@/lib/contracts/usdc';
 import { isContractConfigured } from '@/lib/baseSepolia';
 
+// ponytail: wagmiConfig sets pollingInterval: 30_000 for background watchers, which
+// also meant every receipt wait here idled up to 30s after the block landed (a mines
+// tile click, a plinko settle). Override per receipt wait only — the global stays 30s
+// so useBalance/watch hooks keep their cheap cadence.
+const RECEIPT_POLL_MS = 500;
+
 type Stage = 'approving' | 'betting' | 'revealing' | 'settling' | 'done';
 type PlayFunction = 'playRoulette' | 'playWheel' | 'playPlinko';
 
@@ -67,7 +73,7 @@ export async function runConfidentialGame({
     const approveHash = await writeContract(wagmiConfig, {
       address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager], account,
     });
-    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
+    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash, pollingInterval: RECEIPT_POLL_MS });
   }
 
   onStage?.('betting');
@@ -75,7 +81,7 @@ export async function runConfidentialGame({
   // viem cannot preserve that discriminated tuple after it crosses this shared helper.
   await simulateContract(wagmiConfig, request as any);
   const playHash = await writeContract(wagmiConfig, request as any);
-  const playReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: playHash });
+  const playReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: playHash, pollingInterval: RECEIPT_POLL_MS });
   const placed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetPlaced', logs: playReceipt.logs });
   if (!placed[0]) throw new Error('BetPlaced event was not found');
   const { gameId, seedHandle } = placed[0].args;
@@ -90,7 +96,7 @@ export async function runConfidentialGame({
     functionName: 'settle',
     args: [gameId, attestation, signatures],
   });
-  const settleReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: settleHash });
+  const settleReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: settleHash, pollingInterval: RECEIPT_POLL_MS });
   const outcomes = parseEventLogs({ abi: aptCasinoAbi, eventName: outcomeEvent, logs: settleReceipt.logs });
   if (!outcomes[0]) throw new Error(`${outcomeEvent} was not found`);
   onStage?.('done');
@@ -119,14 +125,14 @@ export async function startMinesSession({
     const approveHash = await writeContract(wagmiConfig, {
       address: usdcAddress, abi: usdcAbi, functionName: 'approve', args: [aptCasinoAddress, wager], account,
     });
-    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
+    await waitForTransactionReceipt(wagmiConfig, { hash: approveHash, pollingInterval: RECEIPT_POLL_MS });
   }
 
   onStage?.('betting');
   const startHash = await writeContract(wagmiConfig, {
     address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'startMines', args: [mineCount, wager], value: fee, account,
   });
-  const startReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: startHash });
+  const startReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: startHash, pollingInterval: RECEIPT_POLL_MS });
   const placed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetPlaced', logs: startReceipt.logs });
   if (!placed[0]) throw new Error('BetPlaced event was not found');
   const { gameId, seedHandle } = placed[0].args;
@@ -138,7 +144,7 @@ export async function startMinesSession({
   const commitHash = await writeContract(wagmiConfig, {
     address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'commitMines', args: [gameId, attestation, signatures], account,
   });
-  await waitForTransactionReceipt(wagmiConfig, { hash: commitHash });
+  await waitForTransactionReceipt(wagmiConfig, { hash: commitHash, pollingInterval: RECEIPT_POLL_MS });
   onStage?.('done');
   return { gameId, startHash, commitHash };
 }
@@ -147,7 +153,7 @@ export async function revealMinesTile({ account, gameId, tile }: { account: Addr
   const hash = await writeContract(wagmiConfig, {
     address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTile', args: [gameId, tile], account,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, pollingInterval: RECEIPT_POLL_MS });
   const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
   const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs })[0];
   return { hash, hitMine: Boolean(busted), minePositions: busted?.args.minePositions, revealedCount: revealed?.args.revealedCount };
@@ -157,7 +163,7 @@ export async function revealMinesTiles({ account, gameId, tiles }: { account: Ad
   const hash = await writeContract(wagmiConfig, {
     address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTiles', args: [gameId, tiles], account,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, pollingInterval: RECEIPT_POLL_MS });
   const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
   const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs });
   return {
@@ -173,7 +179,7 @@ export async function cashOutMines({ account, gameId }: { account: Address; game
   const hash = await writeContract(wagmiConfig, {
     address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'cashOut', args: [gameId], account,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, pollingInterval: RECEIPT_POLL_MS });
   const cashedOut = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesCashedOut', logs: receipt.logs })[0];
   if (!cashedOut) throw new Error('MinesCashedOut event was not found');
   return { hash, payout: cashedOut.args.payout, minePositions: cashedOut.args.minePositions };
