@@ -24,11 +24,13 @@ function getLightning() {
 async function reveal(seedHandle: Hex) {
   const lightning = await getLightning();
   let lastError: unknown;
-  // Tuned for Base Sepolia: shorter backoff / outer wait than the prior 3s×40 path.
-  for (let attempt = 0; attempt < 24; attempt++) {
+  // A fresh handle is rejected by the covalidators for the first seconds after the play
+  // tx lands, so this is a poll — short attempts, re-polled often (see the same tuning
+  // note in src/lib/treasury/signer.js).
+  for (let attempt = 0; attempt < 60; attempt++) {
     try {
       const [result] = await lightning.attestedReveal([seedHandle], {
-        backoffConfig: { maxRetries: 6, baseDelayInMs: 800, backoffFactor: 1.15 },
+        backoffConfig: { maxRetries: 2, baseDelayInMs: 400, backoffFactor: 1.3 },
       });
       const raw = result.plaintext.value;
       const value = pad(toHex(typeof raw === 'boolean' ? (raw ? 1 : 0) : raw), { size: 32 });
@@ -38,7 +40,7 @@ async function reveal(seedHandle: Hex) {
       };
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 400));
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Inco reveal timed out');

@@ -4,13 +4,20 @@ import { Lightning } from '@inco/lightning-js/lite';
 import { APTCASINO_CHAIN, BASE_SEPOLIA_RPC_URLS, isContractConfigured } from '@/lib/baseSepolia';
 import { aptCasinoAbi, aptCasinoAddress } from '@/lib/contracts/aptCasino';
 import { usdcAbi, usdcAddress } from '@/lib/contracts/usdc';
+import { maxPicksForBankroll, minePositions, plinkoOutcome } from '@/lib/games/outcomeFromSeed';
 
 const OUTCOME_EVENTS = { roulette: 'RouletteOutcome', wheel: 'WheelOutcome', plinko: 'PlinkoOutcome' };
+// Not in the app-wide ABI (nothing else needs it) — mines sizing reads it once per session.
+const bankrollAbi = [{ name: 'availableBankroll', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] }];
 
-// Tuned for Base Sepolia latency: shorter backoff, fewer wasted outer waits.
-const REVEAL_BACKOFF = { maxRetries: 6, baseDelayInMs: 800, backoffFactor: 1.15 };
-const REVEAL_OUTER_ATTEMPTS = 24;
-const REVEAL_OUTER_SLEEP_MS = 600;
+// The covalidators reject a fresh handle ("ciphertext not found", then "acl disallowed")
+// for the first few seconds after the play tx lands, so this is a poll, not an error
+// path — measured 1.7s to ~15s to clear. Long inner backoffs just oversleep past the
+// moment it becomes available, so keep each attempt short and re-poll often; the
+// attempt count still covers ~2 minutes total.
+const REVEAL_BACKOFF = { maxRetries: 2, baseDelayInMs: 400, backoffFactor: 1.3 };
+const REVEAL_OUTER_ATTEMPTS = 60;
+const REVEAL_OUTER_SLEEP_MS = 400;
 const RECEIPT_CONFIRMATIONS = 1;
 
 let account = null;
@@ -95,6 +102,28 @@ async function ensureAllowance(wallet, spender, wager) {
 }
 
 /**
+ * Background check for a settlement we already answered the player from. Nothing to
+ * recover automatically — a mismatch means outcomeFromSeed.js drifted from the
+ * contract, which is a code bug, so make it loud in the logs.
+ */
+function watchSettlement(settleHash, gameId, expectedPayout) {
+  void publicClient.waitForTransactionReceipt({ hash: settleHash, confirmations: RECEIPT_CONFIRMATIONS })
+    .then((receipt) => {
+      if (receipt.status !== 'success') {
+        console.error('settle tx reverted', { gameId: gameId.toString(), settleHash });
+        return;
+      }
+      const [settled] = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetSettled', logs: receipt.logs });
+      if (settled && settled.args.payout !== expectedPayout) {
+        console.error('PAYOUT MISMATCH — outcomeFromSeed.js is out of sync with AptCasino.sol', {
+          gameId: gameId.toString(), settleHash, onChain: settled.args.payout.toString(), local: expectedPayout.toString(),
+        });
+      }
+    })
+    .catch((error) => console.error('settle receipt watch failed', { gameId: gameId.toString(), settleHash, error }));
+}
+
+/**
  * Executes one confidential round using the treasury's own on-chain funds/signature.
  */
 export function playAndSettle({ game, functionName, args, wager }) {
@@ -111,6 +140,24 @@ export function playAndSettle({ game, functionName, args, wager }) {
     const { attestation, signatures } = await attestedReveal(placed.args.seedHandle);
 
     const settleHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'settle', args: [placed.args.gameId, attestation, signatures] });
+
+    // ponytail: plinko's result is a pure function of the seed we just attested, so the
+    // player doesn't have to wait ~1.5s for the settle block — the tx is broadcast (and
+    // can't revert for bankroll: maxPayout was reserved at play time), and the same
+    // numbers the contract will emit are derived locally. Verified against 6 real
+    // settled rounds. Roulette/wheel keep the read-it-from-the-receipt path.
+    if (game === 'plinko') {
+      const local = plinkoOutcome({ risk: Number(args[0]), rows: Number(args[1]), wager, seed: BigInt(attestation.value) });
+      watchSettlement(settleHash, placed.args.gameId, local.payout);
+      return {
+        gameId: placed.args.gameId,
+        playHash,
+        settleHash,
+        payout: local.payout,
+        outcome: { gameId: placed.args.gameId, bucket: local.bucket, multiplierBps: local.multiplierBps, payout: local.payout },
+      };
+    }
+
     const settleReceipt = await publicClient.waitForTransactionReceipt({ hash: settleHash, confirmations: RECEIPT_CONFIRMATIONS });
     const [settled] = parseEventLogs({ abi: aptCasinoAbi, eventName: 'BetSettled', logs: settleReceipt.logs });
     const [outcome] = parseEventLogs({ abi: aptCasinoAbi, eventName: OUTCOME_EVENTS[game], logs: settleReceipt.logs });
@@ -136,32 +183,35 @@ export function startAndCommitMines({ mineCount, wager }) {
 
     const commitHash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'commitMines', args: [placed.args.gameId, attestation, signatures] });
     await publicClient.waitForTransactionReceipt({ hash: commitHash, confirmations: RECEIPT_CONFIRMATIONS });
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const session = await publicClient.readContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'getMinesSession', args: [placed.args.gameId] });
-      if (session[4]) break; // committed
-      await new Promise((resolve) => setTimeout(resolve, 600));
-    }
 
-    return { gameId: placed.args.gameId, startHash, commitHash };
+    // The layout is now fixed on-chain and is a pure function of the seed we just
+    // attested, so derive it here: every later tile click can be answered from it
+    // without waiting on a block. Verified against 3 real finished sessions.
+    const positions = minePositions(BigInt(attestation.value), mineCount);
+    const bankroll = await publicClient.readContract({ address: aptCasinoAddress, abi: bankrollAbi, functionName: 'availableBankroll' });
+    // revealTile() reserves liability incrementally and reverts past what the bankroll
+    // covers — stop the player at that pick instead of letting a reveal fail on-chain.
+    const maxPicks = maxPicksForBankroll(wager, mineCount, bankroll);
+
+    return { gameId: placed.args.gameId, startHash, commitHash, minePositions: positions, maxPicks };
   });
 }
 
+/**
+ * Reveals one tile. The caller already knows the answer from the session's stored
+ * layout, so this only broadcasts the tx (~300ms) instead of waiting for its block
+ * (~2s) — the receipt is watched in the background purely to surface reverts. The
+ * treasury's txs are nonce-ordered by serialized(), so the later cashOut still
+ * executes after every reveal it follows.
+ */
 export function revealMinesTileTreasury({ gameId, tile }) {
   return serialized(async () => {
     const wallet = walletClient();
     const hash = await wallet.writeContract({ address: aptCasinoAddress, abi: aptCasinoAbi, functionName: 'revealTile', args: [gameId, tile] });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: RECEIPT_CONFIRMATIONS });
-    const busted = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesBusted', logs: receipt.logs })[0];
-    const revealed = parseEventLogs({ abi: aptCasinoAbi, eventName: 'MinesTileRevealed', logs: receipt.logs });
-    const revealedTiles = revealed.map((e) => Number(e.args.tile));
-    const lastRevealed = revealed[revealed.length - 1];
-    return {
-      hash,
-      hitMine: Boolean(busted),
-      minePositions: busted?.args.minePositions,
-      revealedCount: lastRevealed?.args.revealedCount ?? busted?.args.tile,
-      revealedTiles,
-    };
+    void publicClient.waitForTransactionReceipt({ hash, confirmations: RECEIPT_CONFIRMATIONS })
+      .then((receipt) => { if (receipt.status !== 'success') console.error('revealTile reverted', { gameId: gameId.toString(), tile, hash }); })
+      .catch((error) => console.error('revealTile receipt watch failed', { gameId: gameId.toString(), tile, hash, error }));
+    return { hash };
   });
 }
 

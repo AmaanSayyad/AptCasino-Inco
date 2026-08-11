@@ -34,7 +34,29 @@ export async function POST(request) {
   }
 
   const gameId = session.gameId.toString();
-  await db.from('treasury_mines_sessions').insert({ game_id: gameId, wallet, wager_raw: wagerRaw });
+  // mine_positions stays server-side — it is what lets /reveal answer a click without
+  // waiting for a block, and it must never be sent to the player.
+  // ponytail: if 20260812000000_treasury_mines_layout.sql hasn't been applied yet the
+  // insert fails on the unknown columns — fall back to a legacy row so the round still
+  // plays (reveal detects the missing layout and waits on receipts, as it used to).
+  const { error: insertError } = await db.from('treasury_mines_sessions').insert({
+    game_id: gameId,
+    wallet,
+    wager_raw: wagerRaw,
+    mine_positions: session.minePositions,
+    max_picks: session.maxPicks,
+  });
+  if (insertError) {
+    console.error('mines layout columns unavailable, storing legacy session', insertError.message);
+    await db.from('treasury_mines_sessions').insert({ game_id: gameId, wallet, wager_raw: wagerRaw });
+  }
 
-  return NextResponse.json({ ok: true, gameId, balanceRaw: afterDebit, startHash: session.startHash, commitHash: session.commitHash });
+  return NextResponse.json({
+    ok: true,
+    gameId,
+    balanceRaw: afterDebit,
+    startHash: session.startHash,
+    commitHash: session.commitHash,
+    maxPicks: session.maxPicks,
+  });
 }
