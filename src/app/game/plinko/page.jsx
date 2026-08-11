@@ -223,9 +223,16 @@ export default function Plinko() {
       </div>
 
       <div className="site-page-pad-x pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="lg:col-span-2 scroll-mt-20" id="strategy"><PlinkoStrategyGuide /></div>
-          <div className="lg:col-span-1"><PlinkoWinProbabilities risk={riskLevel} rows={rows} /></div>
+        <div className="mb-6 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
+          <div className="scroll-mt-20 lg:col-span-2" id="strategy">
+            <PlinkoStrategyGuide />
+          </div>
+          {/* On lg, fill the row height set by Strategy Guide; scroll inside */}
+          <div className="relative max-h-[22rem] lg:max-h-none lg:min-h-0">
+            <div className="h-full lg:absolute lg:inset-0">
+              <PlinkoWinProbabilities risk={riskLevel} rows={rows} />
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-3 scroll-mt-20" id="payouts"><PlinkoPayouts /></div>

@@ -37,8 +37,8 @@ export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
   const maxPct = Math.max(...rows_.map((r) => r.probability * 100), 1);
 
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40">
-      <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+    <section className="flex h-full max-h-[22rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40 lg:max-h-full">
+      <div className="shrink-0 border-b border-white/10 px-5 py-4 sm:px-5">
         <div className="mb-1 flex items-center gap-2">
           <div className="h-5 w-1 rounded-full bg-gradient-to-b from-red-magic to-blue-magic" />
           <h3 className="font-display text-lg font-semibold text-white sm:text-xl">Win probabilities</h3>
@@ -48,8 +48,8 @@ export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4 sm:p-5">
-        <div className="mb-1 grid grid-cols-[3.5rem_1fr_3.25rem_3.5rem] gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-white/35">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain p-3 sm:p-4">
+        <div className="mb-0.5 grid grid-cols-[3rem_1fr_2.75rem_3.25rem] gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-white/35">
           <span>Bucket</span>
           <span>Hit chance</span>
           <span className="text-right">%</span>
@@ -60,7 +60,7 @@ export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
           return (
             <div
               key={row.bucket}
-              className="grid grid-cols-[3.5rem_1fr_3.25rem_3.5rem] items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-2.5 py-2"
+              className="grid grid-cols-[3rem_1fr_2.75rem_3.25rem] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5"
             >
               <span className="font-mono text-xs text-white/70">#{row.bucket}</span>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -69,7 +69,7 @@ export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
                   style={{ width: `${Math.max(4, (pct / maxPct) * 100)}%` }}
                 />
               </div>
-              <span className="text-right font-mono text-xs tabular-nums text-white/70">{pct.toFixed(2)}</span>
+              <span className="text-right font-mono text-[11px] tabular-nums text-white/70">{pct.toFixed(2)}</span>
               <span
                 className={`text-right font-display text-sm font-bold tabular-nums ${
                   row.multiplier >= 1 ? 'text-emerald-300' : 'text-white/45'
@@ -82,7 +82,7 @@ export default function PlinkoWinProbabilities({ risk = 'Medium', rows = 16 }) {
         })}
       </div>
 
-      <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/40">
+      <div className="shrink-0 border-t border-white/10 px-4 py-2.5 text-[11px] text-white/40">
         <FaChartLine className="mr-1.5 inline text-fuchsia-300" />
         Center buckets hit most often; edges pay more and land least.
       </div>

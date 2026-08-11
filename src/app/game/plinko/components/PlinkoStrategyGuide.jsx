@@ -46,7 +46,7 @@ export default function PlinkoStrategyGuide() {
   const active = LANES.find((l) => l.id === lane) ?? LANES[0];
 
   return (
-    <section className="h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40">
+    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-black/40">
       <div className="border-b border-white/10 px-5 py-5 sm:px-6">
         <div className="mb-1 flex items-center gap-2">
           <div className="h-5 w-1 rounded-full bg-gradient-to-b from-red-magic to-blue-magic" />
