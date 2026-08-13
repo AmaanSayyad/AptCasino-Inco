@@ -7,7 +7,8 @@ import { basescanUrl } from '@/lib/baseSepolia';
 
 const QUICK_AMOUNTS = [1, 5, 10, 25, 50, 100];
 const MIN_DEPOSIT = 1;
-const MIN_WITHDRAW = 1;
+/** Allow dust withdrawals so house balance isn't stuck below $1. */
+const MIN_WITHDRAW = 0.01;
 
 function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-hidden />;
@@ -46,8 +47,13 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
   const depositDisabled = !configured || busy || !depositAmount || !Number.isFinite(depositParsed) || depositParsed < MIN_DEPOSIT;
   const withdrawParsed = parseFloat(withdrawAmount);
   const currentBalance = Number(balance);
-  const withdrawDisabled = !configured || busy || !withdrawAmount || !Number.isFinite(withdrawParsed) ||
-    withdrawParsed < MIN_WITHDRAW || withdrawParsed > currentBalance;
+  // Compare in raw micro-USDC when possible to avoid float edge cases on Max.
+  const withdrawRaw = Number.isFinite(withdrawParsed) ? Math.round(withdrawParsed * 1e6) : 0;
+  const balanceRawNum = Number(balanceRaw) || Math.round(currentBalance * 1e6);
+  const withdrawDisabled = !configured || busy || !withdrawAmount || !Number.isFinite(withdrawParsed)
+    || withdrawParsed < MIN_WITHDRAW
+    || withdrawRaw > balanceRawNum
+    || balanceRawNum <= 0;
 
   async function handleDeposit() {
     setLastTxHash(null);
@@ -132,10 +138,10 @@ export default function HouseBalanceModal({ open, onClose, treasury }) {
               ) : (
                 <div className="space-y-3">
                   <p className="text-xs leading-relaxed text-white/45">Send USDC from your house balance back to your connected wallet.</p>
-                  <p className="text-[11px] text-white/40 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">Available: <span className="font-mono text-white/65">{balance} USDC</span>.</p>
+                  <p className="text-[11px] text-white/40 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">Available: <span className="font-mono text-white/65">{balance} USDC</span>. Minimum withdraw: <span className="font-mono text-white/65">{MIN_WITHDRAW} USDC</span>.</p>
                   <div className="flex gap-2">
-                    <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder="0.00" className="game-input flex-1" />
-                    <button type="button" disabled={withdrawDisabled} onClick={handleWithdraw} className="shrink-0 rounded-xl bg-fuchsia-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                    <input type="number" min={MIN_WITHDRAW} step="0.000001" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder="0.00" className="game-input flex-1" />
+                    <button type="button" disabled={withdrawDisabled} onClick={handleWithdraw} className="shrink-0 rounded-xl bg-fuchsia-500 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
                       {busy ? <Spinner /> : 'Withdraw'}
                     </button>
                   </div>
