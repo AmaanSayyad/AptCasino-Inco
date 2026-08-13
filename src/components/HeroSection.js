@@ -2,8 +2,8 @@ import Image from "next/image";
 import LaunchGameButton from "./LaunchGameButton";
 import { BRAND_LOGOS } from "@/lib/brandLogos";
 
-/** Replace this ID when the new Inco + Megapot teaser is ready */
-const HERO_TEASER_VIDEO_ID = "oWGWqhfEMng";
+/** Landing demo — Inco × Megapot walkthrough */
+const HERO_TEASER_VIDEO_ID = "UTzMalkXTdE";
 const HERO_TEASER_EMBED_URL = `https://www.youtube.com/embed/${HERO_TEASER_VIDEO_ID}?rel=0`;
 
 const HERO_BRANDS = [

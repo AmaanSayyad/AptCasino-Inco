@@ -8,6 +8,7 @@ alwaysApply: true
 When changing games, contracts, treasury settle paths, or Megapot rewards: consult live docs via Inco MCP / these links — do not invent API signatures from memory.
 
 **Live website:** https://aptcasino-inco-gamma.vercel.app/  
+**Demo video:** https://youtu.be/UTzMalkXTdE  
 **GitHub:** https://github.com/AmaanSayyad/AptCasino-Inco  
 **Deck:** https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot  
 **Contact:** amaansayyad2001@gmail.com  

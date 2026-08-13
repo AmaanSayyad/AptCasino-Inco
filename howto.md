@@ -2,7 +2,7 @@
 
 AptCasino is a confidential casino running on **Base Sepolia**. Players wager and receive payouts in **USDC**. Randomness is generated through **Inco Lightning**, while every completed game earns credits that can be redeemed for **Megapot lottery ticket NFTs**.
 
-**Live website:** [https://aptcasino-inco-gamma.vercel.app/](https://aptcasino-inco-gamma.vercel.app/) · **GitHub:** [AptCasino-Inco](https://github.com/AmaanSayyad/AptCasino-Inco) · **Deck:** [Figma](https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot) · **Contact:** [amaansayyad2001@gmail.com](mailto:amaansayyad2001@gmail.com) · **Repo overview:** [`README.md`](./README.md)
+**Live website:** [https://aptcasino-inco-gamma.vercel.app/](https://aptcasino-inco-gamma.vercel.app/) · **Demo video:** [YouTube](https://youtu.be/UTzMalkXTdE) · **GitHub:** [AptCasino-Inco](https://github.com/AmaanSayyad/AptCasino-Inco) · **Deck:** [Figma](https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot) · **Contact:** [amaansayyad2001@gmail.com](mailto:amaansayyad2001@gmail.com) · **Repo overview:** [`README.md`](./README.md)
 
 > [!IMPORTANT]
 > AptCasino currently runs on a testnet. Testnet assets and ticket NFTs do not represent mainnet funds or guaranteed real-world value.

@@ -3,6 +3,7 @@
 Confidential casino on **Base Sepolia** powered by **Inco Lightning** (attested randomness) and **Megapot** (gameplay → lottery ticket NFTs).
 
 **Live website:** [https://aptcasino-inco-gamma.vercel.app/](https://aptcasino-inco-gamma.vercel.app/)  
+**Demo video:** [https://youtu.be/UTzMalkXTdE](https://youtu.be/UTzMalkXTdE)  
 **GitHub:** [https://github.com/AmaanSayyad/AptCasino-Inco](https://github.com/AmaanSayyad/AptCasino-Inco)  
 **Deck:** [AptCasino Inco × Megapot (Figma)](https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot)  
 **Contact:** [amaansayyad2001@gmail.com](mailto:amaansayyad2001@gmail.com)
@@ -188,6 +189,7 @@ The deployer needs Base Sepolia ETH (gas + Inco fees) and USDC for bankroll. `Me
 | Resource | Link |
 | --- | --- |
 | Live website | https://aptcasino-inco-gamma.vercel.app/ |
+| Demo video | https://youtu.be/UTzMalkXTdE |
 | GitHub | https://github.com/AmaanSayyad/AptCasino-Inco |
 | Pitch deck | https://www.figma.com/deck/vcXvmRFqhTN5Sj85ZrYf1i/AptCasino-Inco-x-Megapot |
 | Contact | amaansayyad2001@gmail.com |

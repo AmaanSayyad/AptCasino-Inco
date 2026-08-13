@@ -57,6 +57,11 @@ export default function Footer() {
               </a>
             </li>
             <li>
+              <a href={PROJECT_LINKS.demoVideo} target="_blank" rel="noreferrer" className="hover:text-white">
+                Demo video
+              </a>
+            </li>
+            <li>
               <a href={PROJECT_LINKS.github} target="_blank" rel="noreferrer" className="hover:text-white">
                 GitHub
               </a>
